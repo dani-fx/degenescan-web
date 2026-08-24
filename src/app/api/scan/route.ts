@@ -1,0 +1,176 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { fetchTokensForChain, estimateAgeMinutes } from '@/lib/fetcher'
+import { scoreToken } from '@/lib/scorer'
+import { upsertTrackedSignal } from '@/lib/signal-store'
+import { rugcheckToken } from '@/lib/rugcheck'
+import { record } from '@/lib/outcome-store'
+import type { BotConfig, Chain, ScoredToken } from '@/lib/types'
+
+const WEB_DEFAULTS: BotConfig = {
+  chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'],
+  minLiquidityUsd: 30000,
+  maxPairAgeMinutes: 240,
+  minScoreA: 85,
+  minScoreB: 75,
+  minScoreC: 65,
+  minVolumeSpikeMultiplier: 3.0,
+  minVolume24hUsd: 40000,
+  minBuyPressurePercent: 60,
+  requireSocials: false,
+  requireLpLocked: false,
+  pollIntervalMs: 5 * 60_000,
+  maxAlertsPerPoll: 3,
+  trackRefreshChangePercent: 5,
+}
+
+interface ScanResult {
+  alerts: ScoredToken[]
+  meta: Record<string, unknown>
+}
+
+async function runScan(chains: Chain[], config: BotConfig, minScore: number): Promise<ScanResult> {
+  const flat: ScoredToken[] = []
+  let scanned = 0
+  let rugsDropped = 0
+
+  for (let i = 0; i < chains.length; i++) {
+    const chain = chains[i]
+    if (i > 0) await new Promise((r) => setTimeout(r, 1500)) // GeckoTerminal rate limit
+    const tokens = await fetchTokensForChain(chain)
+    scanned += tokens.length
+    const scored = tokens.map((t) => scoreToken(t, config))
+    const tiered = scored.filter(
+      (t) => t.tier !== 'D' && estimateAgeMinutes(t) <= config.maxPairAgeMinutes && t.score >= minScore
+    )
+    tiered.sort((a, b) => b.score - a.score)
+    flat.push(...tiered)
+  }
+
+  // RugCheck gate: Solana only, hard-drop mechanical rugs / danger risks.
+  const passed: ScoredToken[] = []
+  for (const token of flat) {
+    if (token.chain === 'solana') {
+      const rc = await rugcheckToken(token.address, token.chain)
+      if (rc.isRug || rc.rugged) {
+        rugsDropped++
+        continue
+      }
+    }
+    passed.push(token)
+  }
+
+  passed.sort((a, b) => b.score - a.score)
+  const topAlerts = passed.slice(0, config.maxAlertsPerPoll)
+
+  // Outcome tracking: persist an entry point per alert for later resolution.
+  const now = new Date().toISOString()
+  await Promise.all(
+    topAlerts.map((alert) =>
+      record({
+        signal_id: alert.address,
+        symbol: alert.symbol,
+        chain: alert.chain,
+        address: alert.address,
+        first_price_usd: alert.priceUsd > 0 ? alert.priceUsd : null,
+        first_seen_at: now,
+      }).catch((err) => console.error('outcome record failed', err))
+    )
+  )
+
+  for (const alert of topAlerts) upsertTrackedSignal(alert)
+
+  return {
+    alerts: topAlerts,
+    meta: {
+      chains,
+      count: topAlerts.length,
+      scanned,
+      candidates: passed.length,
+      rugsDropped,
+      maxPairAgeMinutes: config.maxPairAgeMinutes,
+    },
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      chains?: Chain[] | string
+      minLiquidityUsd?: number
+      maxPairAgeMinutes?: number
+      minScoreA?: number
+      minScoreB?: number
+      minScoreC?: number
+      minScore?: number
+      minVolumeSpikeMultiplier?: number
+      minVolume24hUsd?: number
+      minBuyPressurePercent?: number
+      requireSocials?: boolean
+      requireLpLocked?: boolean
+      maxAlertsPerPoll?: number
+    } | null
+
+    const rawChains = body?.chains ?? WEB_DEFAULTS.chains
+    const chains: Chain[] = Array.isArray(rawChains)
+      ? rawChains.filter((c): c is Chain => ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'].includes(c))
+      : [rawChains].filter(Boolean) as Chain[]
+
+    if (!chains.length) {
+      return NextResponse.json({ error: 'No valid chains provided' }, { status: 400 })
+    }
+
+    const minScore = typeof body?.minScore === 'number' ? body.minScore : 0
+
+    const configOverrides: Partial<BotConfig> = {}
+    if (typeof body?.minLiquidityUsd === 'number') configOverrides.minLiquidityUsd = body.minLiquidityUsd
+    if (typeof body?.maxPairAgeMinutes === 'number') configOverrides.maxPairAgeMinutes = body.maxPairAgeMinutes
+    if (typeof body?.minScoreA === 'number') configOverrides.minScoreA = body.minScoreA
+    if (typeof body?.minScoreB === 'number') configOverrides.minScoreB = body.minScoreB
+    if (typeof body?.minScoreC === 'number') configOverrides.minScoreC = body.minScoreC
+    if (typeof body?.minVolumeSpikeMultiplier === 'number') configOverrides.minVolumeSpikeMultiplier = body.minVolumeSpikeMultiplier
+    if (typeof body?.minVolume24hUsd === 'number') configOverrides.minVolume24hUsd = body.minVolume24hUsd
+    if (typeof body?.minBuyPressurePercent === 'number') configOverrides.minBuyPressurePercent = body.minBuyPressurePercent
+    if (typeof body?.requireSocials === 'boolean') configOverrides.requireSocials = body.requireSocials
+    if (typeof body?.requireLpLocked === 'boolean') configOverrides.requireLpLocked = body.requireLpLocked
+    if (typeof body?.maxAlertsPerPoll === 'number') configOverrides.maxAlertsPerPoll = body.maxAlertsPerPoll
+
+    const config = { ...WEB_DEFAULTS, ...configOverrides }
+    const result = await runScan(chains, config, minScore)
+    return NextResponse.json(result)
+  } catch (error) {
+    console.error('Scan API error', error)
+    return NextResponse.json({ error: 'Scan failed' }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const search = request.nextUrl.searchParams
+  const rawChains = search.get('chains') ?? WEB_DEFAULTS.chains.join(',')
+  const chains: Chain[] = rawChains
+    .split(',')
+    .map((s) => s.trim())
+    .filter((c): c is Chain => ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'].includes(c as Chain))
+
+  if (!chains.length) {
+    return NextResponse.json({ error: 'No valid chains provided' }, { status: 400 })
+  }
+
+  const maxPairAgeMinutes = Number(search.get('maxPairAgeMinutes') ?? WEB_DEFAULTS.maxPairAgeMinutes)
+  const maxAlertsPerPoll = Number(search.get('maxAlertsPerPoll') ?? WEB_DEFAULTS.maxAlertsPerPoll)
+  const minScore = Number(search.get('minScore') ?? 0)
+
+  const config: BotConfig = {
+    ...WEB_DEFAULTS,
+    chains,
+    maxPairAgeMinutes: Number.isFinite(maxPairAgeMinutes) ? maxPairAgeMinutes : WEB_DEFAULTS.maxPairAgeMinutes,
+    maxAlertsPerPoll: Number.isFinite(maxAlertsPerPoll) ? maxAlertsPerPoll : WEB_DEFAULTS.maxAlertsPerPoll,
+  }
+
+  try {
+    const result = await runScan(chains, config, Number.isFinite(minScore) ? minScore : 0)
+    return NextResponse.json(result)
+  } catch (error) {
+    console.error('Scan API error', error)
+    return NextResponse.json({ error: 'Scan failed' }, { status: 500 })
+  }
+}
