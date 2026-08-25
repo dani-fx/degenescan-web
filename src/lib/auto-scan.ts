@@ -8,12 +8,15 @@ import path from 'node:path'
 const STATE_PATH = path.join('/home/dani/degenescan-web/data', 'autoscan.json')
 const INTERVAL_MS = 5 * 60_000 // 5 min, matches the Telegram bot cadence
 
+type RunEntry = { at: string; result: string }
+
 type AutoScanState = {
   enabled: boolean
   lastRunAt: string | null
   lastResult: string | null
   runs: number
   errors: number
+  history?: RunEntry[]
 }
 
 let state: AutoScanState = loadState()
@@ -28,9 +31,10 @@ function loadState(): AutoScanState {
       lastResult: raw.lastResult ?? null,
       runs: raw.runs ?? 0,
       errors: raw.errors ?? 0,
+      history: Array.isArray(raw.history) ? raw.history.slice(-50) : [],
     }
   } catch {
-    return { enabled: false, lastRunAt: null, lastResult: null, runs: 0, errors: 0 }
+    return { enabled: false, lastRunAt: null, lastResult: null, runs: 0, errors: 0, history: [] }
   }
 }
 
@@ -51,10 +55,16 @@ async function runOnce() {
     state.lastRunAt = new Date().toISOString()
     state.lastResult = meta ? `scanned=${meta.scanned} candidates=${meta.candidates} rugs=${meta.rugsDropped}` : 'ok'
     state.runs++
+    if (!Array.isArray(state.history)) state.history = []
+    state.history.push({ at: state.lastRunAt, result: state.lastResult })
+    if (state.history.length > 50) state.history = state.history.slice(-50)
     console.log('[auto-scan]', state.lastResult)
   } catch (e) {
     state.errors++
     state.lastResult = `error: ${(e as Error).message}`
+    if (!Array.isArray(state.history)) state.history = []
+    state.history.push({ at: new Date().toISOString(), result: state.lastResult })
+    if (state.history.length > 50) state.history = state.history.slice(-50)
     console.warn('[auto-scan] failed:', (e as Error).message)
   }
   persist()
@@ -75,7 +85,7 @@ function stopTimer() {
 }
 
 export function getAutoScanState(): AutoScanState & { intervalMinutes: number } {
-  return { ...state, intervalMinutes: INTERVAL_MS / 60_000 }
+  return { ...state, history: [...(state.history ?? [])].reverse(), intervalMinutes: INTERVAL_MS / 60_000 }
 }
 
 export function setAutoScanEnabled(enabled: boolean): AutoScanState & { intervalMinutes: number } {

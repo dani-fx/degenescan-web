@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Square, Loader2, Zap, RefreshCw } from "lucide-react";
+import { Play, Square, Loader2, Zap, RefreshCw, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useScannerStore, type ChainKey } from "@/lib/store";
 
@@ -40,6 +40,8 @@ export default function ScanPanel() {
   const [autoOn, setAutoOn] = useState<boolean | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoInfo, setAutoInfo] = useState<string>("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<{ at: string; result: string }[]>([]);
 
   const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; lastRunAt: string | null; lastResult: string | null }>({ enabled: false, lastRunAt: null, lastResult: null });
 
@@ -50,6 +52,7 @@ export default function ScanPanel() {
         .then((d) => {
           setAutoOn(Boolean(d.enabled));
           setAutoStatus({ enabled: Boolean(d.enabled), lastRunAt: d.lastRunAt ?? null, lastResult: d.lastResult ?? null });
+          setHistory(Array.isArray(d.history) ? d.history : []);
         })
         .catch(() => {});
     load();
@@ -212,6 +215,25 @@ export default function ScanPanel() {
           </div>
           {autoStatus.lastResult && (
             <p className="mt-0.5 font-mono text-[11px] text-emerald-200/80">{autoStatus.lastResult}</p>
+          )}
+          {history.length > 1 && (
+            <button
+              onClick={() => setShowHistory((v) => !v)}
+              className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-400/90 hover:text-emerald-300"
+            >
+              <ChevronDown size={12} className={`transition-transform ${showHistory ? "rotate-180" : ""}`} />
+              {showHistory ? "See less" : `See more (${history.length} runs)`}
+            </button>
+          )}
+          {showHistory && (
+            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-emerald-500/20 bg-black/20">
+              {history.map((h, i) => (
+                <div key={i} className="flex items-center justify-between border-b border-emerald-500/10 px-2 py-1 last:border-b-0">
+                  <span className="text-[10px] text-emerald-300/70">{formatAgo(h.at)}</span>
+                  <span className="font-mono text-[10px] text-emerald-200/80">{h.result}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
