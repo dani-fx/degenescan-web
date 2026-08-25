@@ -57,10 +57,10 @@ async function runOnce() {
     state.lastRunAt = new Date().toISOString()
     state.lastResult = meta ? `scanned=${meta.scanned} candidates=${meta.candidates} rugs=${meta.rugsDropped}` : 'ok'
     const entry: RunEntry = { at: state.lastRunAt, result: state.lastResult }
-    if (Array.isArray(body?.details)) {
-      entry.scanned = body.details.scanned
-      entry.candidates = body.details.candidates
-      entry.rugs = body.details.rugs
+    if (body?.details && typeof body.details === 'object') {
+      entry.scanned = Array.isArray(body.details.scanned) ? body.details.scanned : []
+      entry.candidates = Array.isArray(body.details.candidates) ? body.details.candidates : []
+      entry.rugs = Array.isArray(body.details.rugs) ? body.details.rugs : []
     }
     if (!Array.isArray(state.history)) state.history = []
     state.history.push(entry)
