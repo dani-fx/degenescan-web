@@ -41,7 +41,9 @@ export default function ScanPanel() {
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoInfo, setAutoInfo] = useState<string>("");
   const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<{ at: string; result: string }[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [expandedRun, setExpandedRun] = useState<number | null>(null);
+  const [runTab, setRunTab] = useState<"scanned" | "candidates" | "rugs">("candidates");
 
   const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; lastRunAt: string | null; lastResult: string | null }>({ enabled: false, lastRunAt: null, lastResult: null });
 
@@ -226,13 +228,57 @@ export default function ScanPanel() {
             </button>
           )}
           {showHistory && (
-            <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-emerald-500/20 bg-black/20">
-              {history.map((h, i) => (
-                <div key={i} className="flex items-center justify-between border-b border-emerald-500/10 px-2 py-1 last:border-b-0">
-                  <span className="text-[10px] text-emerald-300/70">{formatAgo(h.at)}</span>
-                  <span className="font-mono text-[10px] text-emerald-200/80">{h.result}</span>
-                </div>
-              ))}
+            <div className="mt-1.5 max-h-72 overflow-y-auto rounded-lg border border-emerald-500/20 bg-black/20">
+              {history.map((h, i) => {
+                const hasDetail = Array.isArray(h.scanned) && h.scanned.length > 0;
+                const isOpen = expandedRun === i;
+                return (
+                  <div key={i} className="border-b border-emerald-500/10 last:border-b-0">
+                    <button
+                      onClick={() => hasDetail ? setExpandedRun(isOpen ? null : i) : undefined}
+                      className={`flex w-full items-center justify-between px-2 py-1.5 text-left ${hasDetail ? "hover:bg-emerald-500/10 cursor-pointer" : "cursor-default"}`}
+                    >
+                      <span className="text-[10px] text-emerald-300/70">{formatAgo(h.at)}</span>
+                      <span className="flex items-center gap-1 font-mono text-[10px] text-emerald-200/80">
+                        {h.result}
+                        {hasDetail && <ChevronDown size={11} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />}
+                      </span>
+                    </button>
+                    {isOpen && hasDetail && (
+                      <div className="px-2 pb-2">
+                        <div className="mb-1 flex gap-1">
+                          {(["scanned", "candidates", "rugs"] as const).map((tabk) => (
+                            <button
+                              key={tabk}
+                              onClick={() => setRunTab(tabk)}
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${
+                                runTab === tabk ? "bg-emerald-500/30 text-emerald-200" : "bg-black/20 text-emerald-300/60 hover:text-emerald-200"
+                              }`}
+                            >
+                              {tabk} {(h[tabk]?.length ?? 0)}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="max-h-36 overflow-y-auto rounded bg-black/30">
+                          {(h[runTab]?.length ?? 0) === 0 ? (
+                            <p className="px-2 py-1.5 text-[10px] italic text-muted-foreground">none this run</p>
+                          ) : (
+                            (h[runTab] as any[]).map((tk, k) => (
+                              <div key={k} className="border-b border-white/5 px-2 py-1 last:border-b-0">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-semibold">{tk.symbol?.slice(0, 12)}</span>
+                                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{tk.chain}</span>
+                                </div>
+                                <p className="text-[10px] leading-snug text-emerald-100/70">{tk.reason}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

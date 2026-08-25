@@ -41,15 +41,20 @@ const WEB_DEFAULTS: BotConfig = {
   trackRefreshChangePercent: 5,
 }
 
+type TokenDetail = { symbol: string; chain: string; score?: number; reason: string }
+
 interface ScanResult {
   alerts: ScoredToken[]
   meta: Record<string, unknown>
+  details?: { scanned: TokenDetail[]; candidates: TokenDetail[]; rugs: TokenDetail[] }
 }
 
-async function runScan(chains: Chain[], config: BotConfig, minScore: number): Promise<ScanResult> {
+async function runScan(chains: Chain[], config: BotConfig, minScore: number): Promise<ScanResult & { details: NonNullable<ScanResult['details']> }> {
   const flat: ScoredToken[] = []
   let scanned = 0
   let rugsDropped = 0
+  const detailScanned: TokenDetail[] = []
+  const detailCandidates: TokenDetail[] = []
 
   for (let i = 0; i < chains.length; i++) {
     const chain = chains[i]
@@ -59,6 +64,20 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
     const scored = tokens.map((t) => {
       const s = scoreToken(t, config)
       ;(s as any).signalClass = classifySignal(s.score, t.liquidity, t.volume24h, estimateAgeMinutes(t))
+      // Per-token verdict for the scan-details view.
+      const ageMin = estimateAgeMinutes(t)
+      let reason: string
+      if ((s as any).signalClass === null) {
+        if (!Number.isFinite(ageMin)) reason = `age unknown (${t.symbol})`
+        else if (ageMin > config.maxPairAgeMinutes) reason = `too old (${Math.round(ageMin / 60)}h)`
+        else if (s.score < TIERS.low.minScore) reason = `score ${s.score} < ${TIERS.low.minScore}`
+        else if (t.liquidity < TIERS.low.minLiquidityUsd) reason = `liquidity $${Math.round(t.liquidity)} < $${TIERS.low.minLiquidityUsd}`
+        else if (t.volume24h < TIERS.low.minVolume24hUsd) reason = `volume $${Math.round(t.volume24h)} < $${TIERS.low.minVolume24hUsd}`
+        else reason = 'filtered'
+      } else {
+        reason = `${(s as any).signalClass} — ${s.signals.slice(0, 2).map((x) => x.description).join(', ')}`
+      }
+      detailScanned.push({ symbol: t.symbol, chain: t.chain, score: s.score, reason })
       return s
     })
     const tiered = scored.filter(
@@ -70,11 +89,13 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
 
   // RugCheck gate: Solana only, hard-drop mechanical rugs / danger risks.
   const passed: ScoredToken[] = []
+  const detailRugs: TokenDetail[] = []
   for (const token of flat) {
     if (token.chain === 'solana') {
       const rc = await rugcheckToken(token.address, token.chain)
       if (rc.isRug || rc.rugged) {
         rugsDropped++
+        detailRugs.push({ symbol: token.symbol, chain: token.chain, score: token.score, reason: rc.reasons?.[0] ?? 'RugCheck flagged' })
         continue
       }
     }
@@ -120,6 +141,20 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
       candidates: passed.length,
       rugsDropped,
       maxPairAgeMinutes: config.maxPairAgeMinutes,
+    },
+    details: {
+      scanned: detailScanned.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)),
+      candidates: [
+        ...topAlerts.filter((t) => (t as any).signalClass !== 'WATCH').map((t) => ({
+          symbol: t.symbol, chain: t.chain, score: t.score,
+          reason: `${(t as any).signalClass} — ${t.signals.slice(0, 2).map((x) => x.description).join(', ')}`,
+        })),
+        ...watches.map((t) => ({
+          symbol: t.symbol, chain: t.chain, score: t.score,
+          reason: `WATCH — ${t.signals.slice(0, 2).map((x) => x.description).join(', ')}`,
+        })),
+      ],
+      rugs: detailRugs,
     },
   }
 }

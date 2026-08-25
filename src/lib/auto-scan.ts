@@ -8,7 +8,8 @@ import path from 'node:path'
 const STATE_PATH = path.join('/home/dani/degenescan-web/data', 'autoscan.json')
 const INTERVAL_MS = 5 * 60_000 // 5 min, matches the Telegram bot cadence
 
-type RunEntry = { at: string; result: string }
+type TokenEntry = { symbol: string; chain: string; score?: number; reason: string }
+type RunEntry = { at: string; result: string; scanned?: TokenEntry[]; candidates?: TokenEntry[]; rugs?: TokenEntry[] }
 
 type AutoScanState = {
   enabled: boolean
@@ -49,14 +50,20 @@ async function runOnce() {
     const resp = await fetch(`http://localhost:${port}/api/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'] }),
+      body: JSON.stringify({ chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'], includeDetails: true }),
     })
-    const meta = (await resp.json())?.meta
+    const body = await resp.json()
+    const meta = body?.meta
     state.lastRunAt = new Date().toISOString()
     state.lastResult = meta ? `scanned=${meta.scanned} candidates=${meta.candidates} rugs=${meta.rugsDropped}` : 'ok'
-    state.runs++
+    const entry: RunEntry = { at: state.lastRunAt, result: state.lastResult }
+    if (Array.isArray(body?.details)) {
+      entry.scanned = body.details.scanned
+      entry.candidates = body.details.candidates
+      entry.rugs = body.details.rugs
+    }
     if (!Array.isArray(state.history)) state.history = []
-    state.history.push({ at: state.lastRunAt, result: state.lastResult })
+    state.history.push(entry)
     if (state.history.length > 50) state.history = state.history.slice(-50)
     console.log('[auto-scan]', state.lastResult)
   } catch (e) {
