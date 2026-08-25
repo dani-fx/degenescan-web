@@ -106,6 +106,8 @@ export async function getPendingOutcomes(): Promise<
       chain: String(row.chain),
       address: String(row.address),
       first_price_usd: row.first_price_usd != null ? Number(row.first_price_usd) : null,
+      price_at_15m: row.price_at_15m != null ? Number(row.price_at_15m) : null,
+      change_15m: row.change_15m != null ? Number(row.change_15m) : null,
       price_at_30m: row.price_at_30m != null ? Number(row.price_at_30m) : null,
       price_at_60m: row.price_at_60m != null ? Number(row.price_at_60m) : null,
       price_at_120m: row.price_at_120m != null ? Number(row.price_at_120m) : null,
