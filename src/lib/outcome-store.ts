@@ -83,6 +83,8 @@ export async function getPendingOutcomes(): Promise<
     chain: string
     address: string
     first_price_usd: number | null
+    price_at_15m: number | null
+    change_15m: number | null
     price_at_30m: number | null
     price_at_60m: number | null
     price_at_120m: number | null
@@ -94,7 +96,7 @@ export async function getPendingOutcomes(): Promise<
 > {
   const db = await getDb()
   const stmt = db.prepare(
-    `SELECT id, signal_id, symbol, chain, address, first_price_usd, price_at_30m, price_at_60m, price_at_120m, change_30m, change_60m, change_120m, first_seen_at FROM outcomes WHERE price_at_120m IS NULL ORDER BY id ASC`
+    `SELECT id, signal_id, symbol, chain, address, first_price_usd, price_at_15m, change_15m, price_at_30m, price_at_60m, price_at_120m, change_30m, change_60m, change_120m, first_seen_at FROM outcomes WHERE price_at_120m IS NULL ORDER BY id ASC`
   )
   const results: any[] = []
   while (stmt.step()) {
