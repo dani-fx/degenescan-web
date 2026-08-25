@@ -9,14 +9,16 @@ import type { BotConfig, Chain, ScoredToken } from '@/lib/types'
 // Two-tier gating: HIGH = strict, LOW = loosened discovery tier (tagged).
 export const TIERS = {
   high: { minScore: 65, minLiquidityUsd: 30000, minVolume24hUsd: 40000, maxPairAgeMinutes: 240 },
-  low: { minScore: 55, minLiquidityUsd: 10000, minVolume24hUsd: 10000, maxPairAgeMinutes: 360 },
+  low: { minScore: 50, minLiquidityUsd: 10000, minVolume24hUsd: 10000, maxPairAgeMinutes: 360 },
 }
 
-function classifySignal(score: number, liquidity: number, volume24h: number, ageMinutes: number): 'HIGH' | 'LOW' | null {
+function classifySignal(score: number, liquidity: number, volume24h: number, ageMinutes: number): 'HIGH' | 'LOW' | 'WATCH' | null {
   const t = TIERS.high
   if (score >= t.minScore && liquidity >= t.minLiquidityUsd && volume24h >= t.minVolume24hUsd && ageMinutes <= t.maxPairAgeMinutes) return 'HIGH'
   const l = TIERS.low
   if (score >= l.minScore && liquidity >= l.minLiquidityUsd && volume24h >= l.minVolume24hUsd && ageMinutes <= l.maxPairAgeMinutes) return 'LOW'
+  // WATCH: web-only visibility tier — near-misses worth eyeballing, never alerted.
+  if (score >= 35 && liquidity >= 5000 && Number.isFinite(ageMinutes) && ageMinutes <= 360) return 'WATCH'
   return null
 }
 
@@ -82,9 +84,12 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
   // HIGH first, then up to 2 LOW tagged signals.
   const highs = passed.filter((t) => (t as any).signalClass === 'HIGH')
   const lows = passed.filter((t) => (t as any).signalClass === 'LOW').slice(0, 2)
+  const watches = passed.filter((t) => (t as any).signalClass === 'WATCH').slice(0, 6)
   highs.sort((a, b) => b.score - a.score)
   lows.sort((a, b) => b.score - a.score)
-  const topAlerts = [...highs.slice(0, config.maxAlertsPerPoll), ...lows]
+  watches.sort((a, b) => b.score - a.score)
+  for (const w of watches) (w as any).watch = true
+  const topAlerts = [...highs.slice(0, config.maxAlertsPerPoll), ...lows, ...watches]
 
   // Outcome tracking: persist an entry point per alert for later resolution.
   const now = new Date().toISOString()
@@ -110,6 +115,7 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
       count: topAlerts.length,
       high: highs.length,
       low: Math.min(lows.length, 2),
+      watch: Math.min(watches.length, 6),
       scanned,
       candidates: passed.length,
       rugsDropped,

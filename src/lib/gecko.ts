@@ -92,7 +92,7 @@ export async function fetchGeckoTokens(chain: Chain, limit = 30): Promise<RawTok
     // unparseable we MUST NOT fake it with Date.now() — set 0 so
     // estimateAgeMinutes() treats it as unknown-age and it fails the
     // maxPairAgeMinutes filter.
-    const createdAt = String(attr.created_at || attr.pool_created_at || '')
+    const createdAt = String(attr.pool_created_at ?? attr.created_at ?? '')
     const parsedMs = createdAt ? Date.parse(createdAt) : NaN
     const createdMs = Number.isFinite(parsedMs) && parsedMs > 0 ? parsedMs : 0
 

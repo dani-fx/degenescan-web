@@ -27,6 +27,10 @@ export function scoreToken(token: RawToken, config: BotConfig): ScoredToken {
   } else if (token.liquidity >= 80_000) {
     score += 6
     signals.push({ type: 'liquidity', strength: 'moderate', description: 'Liquidity above baseline', points: 6 })
+  } else if (token.liquidity >= 10_000) {
+    // Micro-cap band: brand-new pools live here; give them a foot in the door.
+    score += 3
+    signals.push({ type: 'liquidity', strength: 'weak', description: `Early liquidity $${(token.liquidity / 1000).toFixed(1)}k`, points: 3 })
   } else {
     warnings.push(`Liquidity $${token.liquidity.toFixed(0)} below threshold`)
   }
@@ -61,7 +65,7 @@ export function scoreToken(token: RawToken, config: BotConfig): ScoredToken {
   }
 
   if (token.marketCap > 0 && token.marketCap < 25_000) {
-    score -= 8
+    score -= 3
     warnings.push(`Very small market cap $${token.marketCap.toFixed(0)}`)
   }
 
@@ -81,7 +85,7 @@ export function scoreToken(token: RawToken, config: BotConfig): ScoredToken {
   }
 
   if (token.liquidity < 20_000) {
-    score -= 10
+    score -= token.liquidity >= 10_000 ? 4 : 10
     warnings.push('Low-liquidity pair is easier to manipulate')
   }
   if (token.priceUsd <= 0) {
