@@ -218,13 +218,13 @@ export default function ScanPanel() {
           {autoStatus.lastResult && (
             <p className="mt-0.5 font-mono text-[11px] text-emerald-200/80">{autoStatus.lastResult}</p>
           )}
-          {history.length > 1 && (
+          {autoOn && (
             <button
               onClick={() => setShowHistory((v) => !v)}
               className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-400/90 hover:text-emerald-300"
             >
               <ChevronDown size={12} className={`transition-transform ${showHistory ? "rotate-180" : ""}`} />
-              {showHistory ? "See less" : `See more (${history.length} runs)`}
+              {showHistory ? "See less" : `See more (${history.length} ${history.length === 1 ? "run" : "runs"})`}
             </button>
           )}
           {showHistory && (
