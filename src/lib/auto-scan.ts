@@ -53,6 +53,10 @@ async function runOnce() {
       body: JSON.stringify({ chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'], includeDetails: true }),
     })
     const body = await resp.json()
+    // Resolve pending outcome checkpoints (15m/30m/60m/120m) each cycle.
+    try {
+      await fetch(`http://localhost:${port}/api/stats?resolve=1`, { method: 'GET' })
+    } catch {}
     const meta = body?.meta
     state.lastRunAt = new Date().toISOString()
     state.lastResult = meta ? `scanned=${meta.scanned} candidates=${meta.candidates} rugs=${meta.rugsDropped}` : 'ok'

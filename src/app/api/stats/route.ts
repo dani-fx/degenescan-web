@@ -55,8 +55,8 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
 
     const writeCheckpoint = (
       ageMinutes: number,
-      priceKey: 'price_at_30m' | 'price_at_60m' | 'price_at_120m',
-      changeKey: 'change_30m' | 'change_60m' | 'change_120m'
+      priceKey: 'price_at_15m' | 'price_at_30m' | 'price_at_60m' | 'price_at_120m',
+      changeKey: 'change_15m' | 'change_30m' | 'change_60m' | 'change_120m'
     ) => {
       if (row[priceKey] != null) return
       fields[priceKey] = currentPrice
@@ -66,9 +66,20 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
           : null
     }
 
-    if (ageMin >= 30) writeCheckpoint(30, 'price_at_30m', 'change_30m')
-    if (ageMin >= 60) writeCheckpoint(60, 'price_at_60m', 'change_60m')
-    if (ageMin >= 120) writeCheckpoint(120, 'price_at_120m', 'change_120m')
+    // Fill only the window whose capture slot is open (never copy one price across windows).
+    const grace = 10 // minutes of slack per checkpoint
+    const slots = [
+      { min: 15, until: 30 + grace, priceKey: 'price_at_15m' as const, changeKey: 'change_15m' as const },
+      { min: 30, until: 60 + grace, priceKey: 'price_at_30m' as const, changeKey: 'change_30m' as const },
+      { min: 60, until: 120 + grace, priceKey: 'price_at_60m' as const, changeKey: 'change_60m' as const },
+      { min: 120, until: Infinity, priceKey: 'price_at_120m' as const, changeKey: 'change_120m' as const },
+    ]
+    for (const slot of slots) {
+      if (ageMin >= slot.min && ageMin < slot.until) {
+        writeCheckpoint(slot.min, slot.priceKey, slot.changeKey)
+        break
+      }
+    }
 
     if (Object.keys(fields).length > 0) {
       await updateFields(row.id, fields)

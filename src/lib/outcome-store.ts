@@ -28,6 +28,8 @@ function getDb(): Promise<any> {
           chain TEXT NOT NULL,
           address TEXT NOT NULL,
           first_price_usd REAL,
+          price_at_15m REAL,
+          change_15m REAL,
           price_at_30m REAL,
           price_at_60m REAL,
           price_at_120m REAL,
@@ -118,6 +120,8 @@ export async function getPendingOutcomes(): Promise<
 }
 
 export async function updateFields(id: number, fields: {
+  price_at_15m?: number | null
+  change_15m?: number | null
   price_at_30m?: number | null
   price_at_60m?: number | null
   price_at_120m?: number | null
