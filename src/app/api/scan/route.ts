@@ -6,15 +6,31 @@ import { rugcheckToken } from '@/lib/rugcheck'
 import { record } from '@/lib/outcome-store'
 import type { BotConfig, Chain, ScoredToken } from '@/lib/types'
 
+// Two-tier gating: HIGH = strict, LOW = loosened discovery tier (tagged).
+export const TIERS = {
+  high: { minScore: 65, minLiquidityUsd: 30000, minVolume24hUsd: 40000, maxPairAgeMinutes: 240 },
+  low: { minScore: 55, minLiquidityUsd: 10000, minVolume24hUsd: 10000, maxPairAgeMinutes: 360 },
+}
+
+function classifySignal(score: number, liquidity: number, volume24h: number, ageMinutes: number): 'HIGH' | 'LOW' | null {
+  const t = TIERS.high
+  if (score >= t.minScore && liquidity >= t.minLiquidityUsd && volume24h >= t.minVolume24hUsd && ageMinutes <= t.maxPairAgeMinutes) return 'HIGH'
+  const l = TIERS.low
+  if (score >= l.minScore && liquidity >= l.minLiquidityUsd && volume24h >= l.minVolume24hUsd && ageMinutes <= l.maxPairAgeMinutes) return 'LOW'
+  return null
+}
+
 const WEB_DEFAULTS: BotConfig = {
   chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'],
-  minLiquidityUsd: 30000,
-  maxPairAgeMinutes: 240,
+  // Scoring config uses the LOOSE gate so LOW candidates get scored;
+  // classification into HIGH/LOW happens after scoring via classifySignal().
+  minLiquidityUsd: TIERS.low.minLiquidityUsd,
+  maxPairAgeMinutes: TIERS.low.maxPairAgeMinutes,
   minScoreA: 85,
   minScoreB: 75,
-  minScoreC: 65,
+  minScoreC: TIERS.low.minScore,
   minVolumeSpikeMultiplier: 3.0,
-  minVolume24hUsd: 40000,
+  minVolume24hUsd: TIERS.low.minVolume24hUsd,
   minBuyPressurePercent: 60,
   requireSocials: false,
   requireLpLocked: false,
@@ -38,9 +54,13 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
     if (i > 0) await new Promise((r) => setTimeout(r, 1500)) // GeckoTerminal rate limit
     const tokens = await fetchTokensForChain(chain)
     scanned += tokens.length
-    const scored = tokens.map((t) => scoreToken(t, config))
+    const scored = tokens.map((t) => {
+      const s = scoreToken(t, config)
+      ;(s as any).signalClass = classifySignal(s.score, t.liquidity, t.volume24h, estimateAgeMinutes(t))
+      return s
+    })
     const tiered = scored.filter(
-      (t) => t.tier !== 'D' && estimateAgeMinutes(t) <= config.maxPairAgeMinutes && t.score >= minScore
+      (t) => t.tier !== 'D' && (t as any).signalClass !== null && t.score >= minScore
     )
     tiered.sort((a, b) => b.score - a.score)
     flat.push(...tiered)
@@ -59,8 +79,12 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
     passed.push(token)
   }
 
-  passed.sort((a, b) => b.score - a.score)
-  const topAlerts = passed.slice(0, config.maxAlertsPerPoll)
+  // HIGH first, then up to 2 LOW tagged signals.
+  const highs = passed.filter((t) => (t as any).signalClass === 'HIGH')
+  const lows = passed.filter((t) => (t as any).signalClass === 'LOW').slice(0, 2)
+  highs.sort((a, b) => b.score - a.score)
+  lows.sort((a, b) => b.score - a.score)
+  const topAlerts = [...highs.slice(0, config.maxAlertsPerPoll), ...lows]
 
   // Outcome tracking: persist an entry point per alert for later resolution.
   const now = new Date().toISOString()
@@ -84,6 +108,8 @@ async function runScan(chains: Chain[], config: BotConfig, minScore: number): Pr
     meta: {
       chains,
       count: topAlerts.length,
+      high: highs.length,
+      low: Math.min(lows.length, 2),
       scanned,
       candidates: passed.length,
       rugsDropped,
