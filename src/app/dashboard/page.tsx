@@ -9,6 +9,7 @@ import {
   EyeOff,
   Sparkles,
   GraduationCap,
+  HelpCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
@@ -330,6 +331,48 @@ export default function DashboardPage() {
                     <TierLegend tier="D" count={tierCounts.D ?? 0} />
                   </div>
                 </div>
+                {/* Score legend */}
+                <div className="glass-card rounded-xl p-4 space-y-2 my-2">
+                  <div className="flex items-center gap-2">
+                    <HelpCircle size={14} className="text-muted-foreground" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Score Legend
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px] leading-relaxed">
+                    <ScoreRow
+                      tier="A"
+                      range="85–100"
+                      color="text-tier-a"
+                      barColor="bg-tier-a"
+                      desc="Strong signal — high score across multiple factors."
+                    />
+                    <ScoreRow
+                      tier="B"
+                      range="75–84"
+                      color="text-tier-b"
+                      barColor="bg-tier-b"
+                      desc="Solid signal — passes core thresholds."
+                    />
+                    <ScoreRow
+                      tier="C"
+                      range="65–74"
+                      color="text-tier-c"
+                      barColor="bg-tier-c"
+                      desc="Watchable — meets relaxed bars; lower conviction."
+                    />
+                    <ScoreRow
+                      tier="D"
+                      range="0–64"
+                      color="text-muted-foreground"
+                      barColor="bg-muted"
+                      desc="Below alert threshold — filtered out."
+                    />
+                  </div>
+                  <div className="pt-1 border-t border-border/50 text-[10px] text-muted-foreground">
+                    Classic lane scores /100. Narrative gems score /99 (buyer-velocity scale). Graduations score /99.
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     refreshAllLaneData();
@@ -544,5 +587,34 @@ function TierLegend({ tier, count }: { tier: string; count: number }) {
       {tier}{" "}
       <span className="opacity-70 ml-0.5">{count}</span>
     </span>
+  );
+}
+
+/** One row in the score legend — tier badge + range + description. */
+function ScoreRow({
+  tier,
+  range,
+  color,
+  barColor,
+  desc,
+}: {
+  tier: string;
+  range: string;
+  color: string;
+  barColor: string;
+  desc: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <span
+        className={`shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${barColor} ${color} border-opacity-40`}
+      >
+        {tier}
+      </span>
+      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
+        {range}
+      </span>
+      <span className="text-[11px] text-muted-foreground leading-relaxed">{desc}</span>
+    </div>
   );
 }
