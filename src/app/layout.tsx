@@ -23,10 +23,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Build timestamp pinned at build time (not re-evaluated per request) —
+// changes only when the app is rebuilt, so the edge cache can serve the
+// shell between deploys and only re-validates on a new build.
+const BUILD_STAMP = `<!-- b:${process.env.BUILD_TIMESTAMP || "dev"} -->`;
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans noise-bg antialiased`}>
         <div className="gradient-mesh" aria-hidden="true" />
+        <div dangerouslySetInnerHTML={{ __html: BUILD_STAMP }} />
         {children}
       </body>
     </html>
