@@ -197,8 +197,14 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Vol 24h" value={fmtVol(item.volume24h)} />
+        <Stat label={item.volumeH1 ? "Vol 1h" : "Vol 24h"} value={fmtVol(item.volumeH1 ?? item.volume24h)} />
         <Stat label="Liquidity" value={fmtVol(item.liquidity)} />
+        {item.marketCap != null && item.marketCap > 0 && (
+          <Stat
+            label="Market Cap"
+            value={fmtVol(item.marketCap)}
+          />
+        )}
         <Stat
           label="Price Change"
           value={
@@ -216,6 +222,16 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
             </span>
           }
         />
+        {item.fdv != null && item.fdv > 0 && item.marketCap != null && item.fdv !== item.marketCap && (
+          <Stat
+            label="FDV vs MC"
+            value={
+              <span className="text-muted-foreground">
+                MC ${fmtVol(item.marketCap)} / FDV ${fmtVol(item.fdv)}
+              </span>
+            }
+          />
+        )}
       </div>
 
       {/* Lane-specific stats (narrative or graduation) */}

@@ -39,6 +39,16 @@ export interface SignalItem {
   curveLabel?: string;
   /** Graduation-only: social link count. */
   socials?: number;
+  /** Market cap in USD (all lanes where available). */
+  marketCap?: number;
+  /** Fully diluted valuation in USD (narrative gems with bonding-curve FDV). */
+  fdv?: number;
+  /** Volume in last hour in USD (narrative + graduation lanes; classic uses 24h). */
+  volumeH1?: number;
+  /** Total unique buyers in last 24h (all lanes). */
+  buyers24h?: number;
+  /** Total unique sellers in last 24h (all lanes). */
+  sellers24h?: number;
 }
 
 export interface TrackedItem {

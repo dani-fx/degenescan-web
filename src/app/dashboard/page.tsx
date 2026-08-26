@@ -49,6 +49,10 @@ function mapScoredToken(item: SignalItem, index: number): SignalItem {
     address: item.address ?? "",
     txns24h: txns,
     source: item.source ?? "classic",
+    marketCap: item.marketCap,
+    fdv: item.fdv,
+    buyers24h: txns?.buys,
+    sellers24h: txns?.sells,
   };
 }
 
@@ -88,6 +92,11 @@ function mapNarrativeGem(g: any, index: number): SignalItem {
     h1Buyers: g.h1Buyers,
     h1VolPerBuyer: g.h1VolPerBuyer,
     holderReason: g.holderReason,
+    marketCap: g.marketCap,
+    fdv: g.fdv,
+    volumeH1: g.volumeH1Usd,
+    buyers24h: g.h1Buyers,
+    sellers24h: g.h1Sellers,
   };
 }
 
@@ -125,6 +134,10 @@ function mapGraduation(g: any, index: number): SignalItem {
     curveMinutes: g.curveMinutes,
     curveLabel: g.curveLabel,
     socials: g.socials,
+    marketCap: g.mcapUsd,
+    volumeH1: g.volumeH1Usd,
+    buyers24h: g.h1Buyers,
+    sellers24h: 0,
   };
 }
 
