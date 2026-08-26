@@ -1,7 +1,16 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Square, Loader2, Zap, RefreshCw, ChevronDown } from "lucide-react";
+import {
+  Play,
+  Square,
+  Loader2,
+  Zap,
+  RefreshCw,
+  ChevronDown,
+  Sparkles,
+  GraduationCap,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useScannerStore, type ChainKey } from "@/lib/store";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ExternalLink, Star } from "lucide-react";
+import { ExternalLink, Star, Sparkles, GraduationCap, Users, TrendingUp } from "lucide-react";
 import { useScannerStore, type SignalItem, type TierKey } from "@/lib/store";
 
 const tierStyles: Record<TierKey, { bg: string; text: string; border: string }> = {
@@ -28,10 +28,86 @@ function fmtAge(min: number): string {
   return `${(min / 60).toFixed(1)}h`;
 }
 
+/** Source badge — shows which lane produced this signal. */
+function SourceBadge({ source }: { source: string }) {
+  const config: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+    classic: { icon: null, label: "CLASSIC", color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    narrative: { icon: <Sparkles size={10} />, label: "NARRATIVE", color: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
+    graduation: { icon: <GraduationCap size={10} />, label: "GRADUATION", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  };
+  const c = config[source] ?? config.classic;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${c.color}`}>
+      {c.icon}
+      {c.label}
+    </span>
+  );
+}
+
+/** Narrative-only stats row: buyer velocity metrics. */
+function NarrativeStats({ item }: { item: SignalItem }) {
+  if (item.source !== "narrative") return null;
+  return (
+    <div className="grid grid-cols-2 gap-3 pt-1">
+      <Stat
+        label="1h Buyers"
+        value={
+          <span className="flex items-center gap-1 text-tier-b">
+            <Users size={11} />
+            {item.h1Buyers?.toLocaleString() ?? "?"}
+          </span>
+        }
+      />
+      <Stat
+        label="$/Buyer 1h"
+        value={
+          <span className="flex items-center gap-1 text-tier-b">
+            <TrendingUp size={11} />
+            {item.h1VolPerBuyer ? fmtVol(item.h1VolPerBuyer) : "?"}
+          </span>
+        }
+      />
+    </div>
+  );
+}
+
+/** Graduation-only stats: curve time + socials. */
+function GraduationStats({ item }: { item: SignalItem }) {
+  if (item.source !== "graduation") return null;
+  return (
+    <div className="grid grid-cols-2 gap-3 pt-1">
+      <Stat
+        label="Curve Time"
+        value={
+          <span className="flex items-center gap-1">
+            {item.curveMinutes === null
+              ? <span className="text-tier-c">?</span>
+              : item.curveMinutes! <= 10
+              ? <span className="text-tier-a">⚡ {item.curveMinutes}m</span>
+              : <span className="text-tier-b">{item.curveMinutes}m</span>}
+          </span>
+        }
+      />
+      <Stat
+        label="Socials"
+        value={
+          <span className="flex items-center gap-1 text-muted-foreground">
+            {item.socials === 0
+              ? "none"
+              : `${item.socials} link${item.socials === 1 ? "" : "s"}`}
+          </span>
+        }
+      />
+    </div>
+  );
+}
+
 export default function SignalCard({ item, index }: { item: SignalItem; index: number }) {
   const track = useScannerStore((s) => s.track);
   const isTracked = useScannerStore((s) => s.tracked.some((t) => t.id === item.id));
   const tierStyle = tierStyles[item.tier];
+
+  // Explorer link: use pool/mint address for narrative and graduation, classic address for others.
   const explorerLink = `https://dexscreener.com/${item.chain}/${item.address}`;
 
   return (
@@ -49,12 +125,17 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-foreground tracking-tight">${item.symbol}</h3>
+              <h3 className="font-semibold text-foreground tracking-tight">
+                ${item.symbol}
+              </h3>
+              <SourceBadge source={item.source ?? "classic"} />
               <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${tierStyle.bg} ${tierStyle.text} ${tierStyle.border}`}>
                 {item.tier}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5 capitalize">{item.chain}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 capitalize">
+              {item.chain}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -84,14 +165,18 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
       {/* Score */}
       <div className="flex items-end gap-3">
         <div className="flex-1">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">Score</p>
+          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">
+            Score
+          </p>
           <div className="flex items-end gap-2">
             <span
               className={`text-3xl font-bold bg-gradient-to-r ${scoreGradient(item.score)} bg-clip-text text-transparent leading-none`}
             >
               {item.score}
             </span>
-            <span className="text-muted-foreground text-sm mb-0.5">/100</span>
+            <span className="text-muted-foreground text-sm mb-0.5">
+              /100
+            </span>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
             <motion.div
@@ -103,7 +188,9 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
           </div>
         </div>
         <div className="text-right">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">Age</p>
+          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">
+            Age
+          </p>
           <p className="text-sm font-semibold text-foreground">{fmtAge(item.ageMinutes)}</p>
         </div>
       </div>
@@ -130,6 +217,10 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
           }
         />
       </div>
+
+      {/* Lane-specific stats (narrative or graduation) */}
+      <NarrativeStats item={item} />
+      <GraduationStats item={item} />
 
       {/* Explanation */}
       <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line line-clamp-3">
@@ -176,7 +267,9 @@ export default function SignalCard({ item, index }: { item: SignalItem; index: n
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="glass rounded-xl p-2.5">
-      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+        {label}
+      </p>
       <p className="text-sm font-semibold text-foreground mt-0.5">{value}</p>
     </div>
   );

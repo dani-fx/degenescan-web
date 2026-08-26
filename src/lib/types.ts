@@ -34,6 +34,50 @@ export interface Signal {
   points: number
 }
 
+/** Narrative-lane signal: viral pump.fun-style runner caught by unique-buyer
+ *  velocity on GT trending pools, not by classic liquidity depth.
+ */
+export interface NarrativeSignal {
+  chain: Chain
+  baseMint: string
+  poolAddress: string
+  symbol: string
+  name: string
+  priceUsd: number
+  liquidityUsd: number
+  volumeH1Usd: number
+  volumeH24Usd: number
+  marketCap: number
+  fdv: number
+  ageMinutes: number
+  h1Buyers: number
+  h1Sellers: number
+  m15Buyers: number
+  h1VolPerBuyer: number
+  score: number
+  holderReason: string
+  exploredAt: string
+}
+
+/** Graduation signal: pump.fun token that just hit PumpSwap.
+ */
+export interface GraduationSignal {
+  mint: string
+  poolAddress: string
+  symbol: string
+  name: string
+  gradMinutesAgo: number
+  h1Buyers: number
+  m15Buyers: number
+  liquidityUsd: number
+  volumeH1Usd: number
+  mcapUsd: number
+  curveMinutes: number | null
+  creator: string | null
+  socials: number
+  exploredAt: string
+}
+
 export interface BotConfig {
   chains: Chain[]
   minLiquidityUsd: number
