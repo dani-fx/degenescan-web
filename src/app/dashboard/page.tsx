@@ -10,6 +10,13 @@ import {
   Sparkles,
   GraduationCap,
   HelpCircle,
+  Brain,
+  TrendingUp,
+  TrendingDown,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Loader2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
@@ -17,10 +24,12 @@ import {
   type SignalItem,
   type TrackedItem,
   type SignalSource,
+  type TradeEntry,
 } from "@/lib/store";
 import SignalCard from "@/components/signal-card";
 import TrackedRow from "@/components/tracked-row";
 import ScanPanel from "@/components/scan-panel";
+import TradesPanel from "@/components/trades-panel";
 import Link from "next/link";
 
 function mapScoredToken(item: SignalItem, index: number): SignalItem {
@@ -153,12 +162,18 @@ export default function DashboardPage() {
     narrativeFetchedAt,
     graduationFetchedAt,
     refreshAllLaneData,
+    trades,
+    tradeStats,
+    fetchTrades,
+    closeTrade,
+    refreshTradePrices,
   } = useScannerStore();
+  const refreshClassicSignals = useScannerStore((s) => s.refreshClassicSignals);
   const [showTracked, setShowTracked] = useState(true);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [graduationLoading, setGraduationLoading] = useState(false);
 
-  // Refresh narrative + graduation lanes on mount and periodically.
+  // Refresh narrative + graduation + tracked lanes on mount and periodically.
   useEffect(() => {
     let cancelled = false;
     const fetchNarrative = async () => {
@@ -187,11 +202,39 @@ export default function DashboardPage() {
         if (!cancelled) setGraduationLoading(false);
       }
     };
+
+    // Fetch tracked signals from the server-side SQLite store on mount and periodically.
+    const fetchTracked = async () => {
+      try {
+        const r = await fetch('/api/track');
+        const d: any = await r.json();
+        if (!cancelled && d.tracked?.length) {
+          const mapped: TrackedItem[] = d.tracked.map((t: any) => ({
+            id: t.id ?? t.token?.address ?? String(t.id),
+            symbol: t.token?.symbol ?? t.symbol ?? '???',
+            name: t.token?.name ?? t.name ?? '',
+            chain: t.token?.chain ?? t.chain ?? 'solana',
+            firstPrice: t.firstPrice ?? t.token?.priceUsd ?? 0,
+            nowPrice: t.token?.priceUsd ?? 0,
+            priceChange: typeof t.priceChange === 'number' ? t.priceChange : 0,
+            address: t.token?.address ?? t.id ?? '',
+            source: t.source ?? 'classic',
+          }))
+          useScannerStore.getState().updateTrackedPrices(mapped)
+        }
+      } catch {}
+    };
+
     fetchNarrative();
     fetchGraduation();
+    fetchTracked();
+    fetchTrades();
     const iv = setInterval(() => {
       fetchNarrative();
       fetchGraduation();
+      fetchTracked();
+      fetchTrades();
+      refreshClassicSignals();
     }, 5 * 60_000);
     return () => {
       cancelled = true;
@@ -294,6 +337,9 @@ export default function DashboardPage() {
             <div className="lg:sticky lg:top-24 space-y-4">
               <ScanPanel />
 
+              {/* Trades Panel */}
+              <TradesPanel />
+
               {/* Stats Panel */}
               <div className="glass-card rounded-2xl p-5 space-y-3">
                 <div className="flex items-center gap-2">
@@ -391,6 +437,7 @@ export default function DashboardPage() {
                     refreshAllLaneData();
                     setNarrativeLoading(true);
                     setGraduationLoading(true);
+                    fetchTrades();
                     fetch("/api/narrative").finally(() =>
                       setNarrativeLoading(false)
                     );
@@ -585,25 +632,20 @@ function LaneBadge({
 }
 
 function TierLegend({ tier, count }: { tier: string; count: number }) {
-  const colors: Record<string, string> = {
-    A: "bg-tier-a text-tier-a border-tier-a/40",
-    B: "bg-tier-b text-tier-b border-tier-b/40",
-    C: "bg-tier-c text-tier-c border-tier-c/40",
-    D: "bg-muted text-muted-foreground border-muted-foreground/40",
+  const colorMap: Record<string, string> = {
+    A: "text-tier-a bg-tier-a/15",
+    B: "text-tier-b bg-tier-b/15",
+    C: "text-tier-c bg-tier-c/15",
+    D: "text-muted-foreground bg-muted/15",
   };
+  if (count === 0) return null;
   return (
-    <span
-      className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-        colors[tier] ?? "bg-muted text-muted-foreground"
-      }`}
-    >
-      {tier}{" "}
-      <span className="opacity-70 ml-0.5">{count}</span>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${colorMap[tier] ?? colorMap.D}`}>
+      {tier} {count}
     </span>
   );
 }
 
-/** One row in the score legend — tier badge + range + description. */
 function ScoreRow({
   tier,
   range,
@@ -618,16 +660,13 @@ function ScoreRow({
   desc: string;
 }) {
   return (
-    <div className="flex items-start gap-2">
-      <span
-        className={`shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${barColor} ${color} border-opacity-40`}
-      >
-        {tier}
-      </span>
-      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`}>
-        {range}
-      </span>
-      <span className="text-[11px] text-muted-foreground leading-relaxed">{desc}</span>
+    <div className="flex items-center gap-2">
+      <span className={`w-4 text-center font-bold ${color}`}>{tier}</span>
+      <span className="w-12 text-[10px] text-muted-foreground font-mono">{range}</span>
+      <div className={`flex-1 h-1 rounded-full ${barColor} overflow-hidden`}>
+        <div className="h-full rounded-full bg-current" style={{ width: tier === "A" ? "100%" : tier === "B" ? "80%" : tier === "C" ? "60%" : "40%" }} />
+      </div>
+      <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">{desc}</span>
     </div>
   );
 }

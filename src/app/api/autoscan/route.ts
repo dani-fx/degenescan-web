@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getAutoScanState, setAutoScanEnabled } from '@/lib/auto-scan'
 
 export async function GET() {
   return NextResponse.json(getAutoScanState())
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { enabled?: boolean }
   if (typeof body.enabled !== 'boolean') {
     return NextResponse.json({ error: 'body must be { enabled: boolean }' }, { status: 400 })

@@ -111,11 +111,13 @@ export default function ScanPanel() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chains: activeChains, minScore }),
+        body: JSON.stringify({ chains: activeChains, minScore, autoTrade: true }),
       });
       if (!res.ok) throw new Error(`Scan failed: ${res.status}`);
       const data = await res.json();
       setResults(Array.isArray(data.alerts) ? data.alerts : []);
+      // Refresh trades / trade stats from the scan response.
+      useScannerStore.getState().fetchTrades();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed");
     } finally {

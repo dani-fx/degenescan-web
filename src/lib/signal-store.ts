@@ -130,14 +130,17 @@ export function recordOutcome(id: string, priceUsd: number, changeFromEntry: num
   return existing
 }
 
-export function clearTracked(): void {
-  tracked.clear()
+export function removeTrackedSignal(address: string): boolean {
+  const existing = tracked.get(address)
+  if (!existing) return false
+  tracked.delete(address)
   getDb()
     .then((db) => {
-      db.run(`DELETE FROM signals`)
+      db.run(`DELETE FROM signals WHERE id = ?`, [address])
       persist(db)
     })
-    .catch((err) => console.error('signal-store clear failed', err))
+    .catch((err) => console.error('signal-store remove failed', err))
+  return true
 }
 
 // Warm the cache from sqlite on first import in a server context.

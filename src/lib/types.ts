@@ -20,7 +20,7 @@ export interface RawToken {
 
 export interface ScoredToken extends RawToken {
   score: number
-  tier: 'A' | 'B' | 'C' | 'D'
+  tier: TierKey
   signals: Signal[]
   explanation: string
   warnings: string[]
@@ -77,6 +77,8 @@ export interface GraduationSignal {
   socials: number
   exploredAt: string
 }
+
+export type TierKey = 'A' | 'B' | 'C' | 'D'
 
 export interface BotConfig {
   chains: Chain[]
@@ -141,4 +143,44 @@ export const WEB_DEFAULT_CONFIG: BotConfig = {
   pollIntervalMs: 5 * 60_000,
   maxAlertsPerPoll: 1,
   trackRefreshChangePercent: 5,
+}
+
+/** Auto-trade simulation: when a signal scores at or above this on a scan,
+ *  a simulated trade is automatically opened (no real funds). Stored in
+ *  data/trades.sqlite so it survives refreshes and restarts.
+ */
+export const AUTO_TRADE_MIN_SCORE = 85
+
+export interface TradeEntry {
+  id: number
+  signal_id: string
+  symbol: string
+  chain: Chain
+  address: string
+  entry_price_usd: number
+  entry_score: number
+  entry_tier: TierKey
+  entry_at: string
+  current_price_usd: number
+  pnl_pct: number
+  status: 'open' | 'closed'
+  checkpoints: TradeCheckpoint[]
+  note: string
+}
+
+export interface TradeCheckpoint {
+  at: string
+  label: 'entry' | '15m' | '30m' | '60m' | '120m' | 'manual_close'
+  price_usd: number
+  pnl_pct: number
+}
+
+export interface TradeStats {
+  totalTrades: number
+  openTrades: number
+  closedTrades: number
+  avgPnlPct: number
+  bestPnlPct: number
+  worstPnlPct: number
+  totalPnlPct: number
 }
