@@ -59,12 +59,16 @@ async function runOnce() {
         minScore: 65,
         autoTrade: true,
       }),
-    })
+    }, 90_000)
     if (!resp.ok) throw new Error(`scan HTTP ${resp.status}`)
     const body = await resp.json()
 
     try {
-      const result = await fetchWithTimeout(`http://localhost:${port}/api/stats?resolve=1`, { method: 'GET' })
+      const result = await fetchWithTimeout(
+        `http://localhost:${port}/api/stats?resolve=1`,
+        { method: 'GET' },
+        60_000,
+      )
       if (!result.ok) throw new Error(`stats HTTP ${result.status}`)
     } catch (error) {
       console.warn('[auto-scan] outcome refresh failed:', (error as Error).message)
@@ -74,7 +78,7 @@ async function runOnce() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Origin: `http://localhost:${port}` },
         body: JSON.stringify({ action: 'refresh' }),
-      })
+      }, 30_000)
       if (!result.ok) throw new Error(`trades HTTP ${result.status}`)
     } catch (error) {
       console.warn('[auto-scan] trade refresh failed:', (error as Error).message)
