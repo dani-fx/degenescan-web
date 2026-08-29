@@ -148,7 +148,7 @@ export function setAutoScanEnabled(enabled: boolean): AutoScanState & { interval
 // Restore a previously-enabled schedule after a server restart.
 export function initAutoScan() {
   if (process.env.NEXT_PHASE === 'phase-production-build' || process.env.npm_lifecycle_event === 'build') return
-  if (state.enabled) {
+  if (state.enabled && !timer) {
     startTimer()
     setTimeout(() => void runOnce(), 2_000)
   }
