@@ -1,31 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTrackedSignals } from '@/lib/signal-store'
-import { getPendingOutcomes, updateFields } from '@/lib/outcome-store'
+import { computeOutcomeStats, getPendingOutcomes, updateFields } from '@/lib/outcome-store'
+import { rateLimit } from '@/lib/api'
+import { fetchWithTimeout } from '@/lib/storage'
+import { canonicalIdentity } from '@/lib/token-identity'
 
-function computeStats(tracked: ReturnType<typeof getTrackedSignals>) {
-  const outcomes = tracked.flatMap((t) => t.outcomes)
-  if (!outcomes.length) {
-    return { winRate: 0, avgGain: 0, avgLoss: 0, best: 0, worst: 0, sampleSize: 0 }
-  }
-
-  const changes = outcomes.map((o) => o.changeFromEntry)
-  const wins = changes.filter((c) => c > 0)
-  const losses = changes.filter((c) => c <= 0)
-
-  const winRate = wins.length / changes.length
-  const avgGain = wins.length ? wins.reduce((sum, c) => sum + c, 0) / wins.length : 0
-  const avgLoss = losses.length ? losses.reduce((sum, c) => sum + c, 0) / losses.length : 0
-  const best = Math.max(...changes)
-  const worst = Math.min(...changes)
-
-  return { winRate, avgGain, avgLoss, best, worst, sampleSize: changes.length }
-}
+interface DexPair { chainId?: string; priceUsd?: string; baseToken?: { address?: string } }
 
 // ?resolve=1 — re-fetch current prices for open outcomes via DexScreener and
 // write price/change columns based on elapsed time since first_seen_at
 // (30m / 60m / 120m checkpoints).
 async function resolveOutcomes(): Promise<{ resolved: number }> {
-  const pending = await getPendingOutcomes()
+  const pending = (await getPendingOutcomes()).slice(0, 10)
   let resolved = 0
 
   for (const row of pending) {
@@ -34,15 +19,17 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
 
     let currentPrice = 0
     try {
-      const resp = await fetch(
+      const resp = await fetchWithTimeout(
         `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(row.address)}`,
         { headers: { Accept: 'application/json' } }
       )
       if (resp.ok) {
-        const data = (await resp.json()) as any
-        const pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : []
-        const preferred =
-          pairs.find((p) => String(p.chainId || '').toLowerCase().includes(row.chain)) || pairs[0]
+        const data = (await resp.json()) as { pairs?: DexPair[] }
+        const requested = canonicalIdentity(row.chain, row.address)
+        const preferred = data.pairs?.find((pair) => {
+          try { return canonicalIdentity(pair.chainId ?? '', pair.baseToken?.address ?? '').key === requested.key }
+          catch { return false }
+        })
         currentPrice = Number(preferred?.priceUsd || 0) || 0
       }
     } catch {
@@ -54,7 +41,6 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
     const fields: Parameters<typeof updateFields>[1] = {}
 
     const writeCheckpoint = (
-      ageMinutes: number,
       priceKey: 'price_at_15m' | 'price_at_30m' | 'price_at_60m' | 'price_at_120m',
       changeKey: 'change_15m' | 'change_30m' | 'change_60m' | 'change_120m'
     ) => {
@@ -74,12 +60,8 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
       { min: 60, until: 120 + grace, priceKey: 'price_at_60m' as const, changeKey: 'change_60m' as const },
       { min: 120, until: Infinity, priceKey: 'price_at_120m' as const, changeKey: 'change_120m' as const },
     ]
-    for (const slot of slots) {
-      if (ageMin >= slot.min && ageMin < slot.until) {
-        writeCheckpoint(slot.min, slot.priceKey, slot.changeKey)
-        break
-      }
-    }
+    const slot = [...slots].reverse().find((candidate) => ageMin >= candidate.min && ageMin < candidate.until)
+    if (slot) writeCheckpoint(slot.priceKey, slot.changeKey)
 
     if (Object.keys(fields).length > 0) {
       await updateFields(row.id, fields)
@@ -91,13 +73,13 @@ async function resolveOutcomes(): Promise<{ resolved: number }> {
 }
 
 export async function GET(request: NextRequest) {
+  const limited = rateLimit(request, 20, 60_000); if (limited) return limited
   try {
     let resolution: { resolved: number } | undefined
     if (request.nextUrl.searchParams.get('resolve') === '1') {
       resolution = await resolveOutcomes()
     }
-    const tracked = getTrackedSignals()
-    const stats = computeStats(tracked)
+    const stats = await computeOutcomeStats()
     return NextResponse.json({ stats, ...(resolution ? { resolution } : {}) })
   } catch (error) {
     console.error('Stats API error', error)

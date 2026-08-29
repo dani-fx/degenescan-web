@@ -192,7 +192,7 @@ export async function fetchTokensForChain(chain: Chain): Promise<RawToken[]> {
 
 function mapDexScreenerPair(pair: DexPair): RawToken {
   const baseToken = pair.baseToken
-  const priceUsd = Number(pair.priceUsd || pair.priceChange?.h24 || 0) || 0
+  const priceUsd = Number(pair.priceUsd || 0) || 0
   const volume24h = Number(pair.volume?.h24 ?? pair.volume24h ?? 0) || 0
   const liquidity = Number(pair.liquidity?.usd ?? pair.liquidityUsd ?? 0) || 0
   // Real pair age only. Missing/unparseable -> 0 (unknown), never Date.now().

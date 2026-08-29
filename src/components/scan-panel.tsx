@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play,
-  Square,
   Loader2,
   Zap,
   RefreshCw,
@@ -11,7 +10,7 @@ import {
   Sparkles,
   GraduationCap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useScannerStore, type ChainKey } from "@/lib/store";
 
 const ALL_CHAINS: { key: ChainKey; label: string; color: string }[] = [
@@ -53,6 +52,8 @@ export default function ScanPanel() {
   const [history, setHistory] = useState<any[]>([]);
   const [expandedRun, setExpandedRun] = useState<number | null>(null);
   const [runTab, setRunTab] = useState<"scanned" | "candidates" | "rugs">("candidates");
+  const scanControllerRef = useRef<AbortController | null>(null);
+  const scanGenerationRef = useRef(0);
 
   const [autoStatus, setAutoStatus] = useState<{ enabled: boolean; lastRunAt: string | null; lastResult: string | null }>({ enabled: false, lastRunAt: null, lastResult: null });
 
@@ -69,6 +70,11 @@ export default function ScanPanel() {
     load();
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => () => {
+    scanGenerationRef.current += 1;
+    scanControllerRef.current?.abort();
   }, []);
 
   const toggleAutoScan = async () => {
@@ -99,11 +105,12 @@ export default function ScanPanel() {
   };
 
   const runScan = async () => {
-    if (isScanning) {
-      setScanning(false);
-      setError(null);
-      return;
-    }
+    if (isScanning) return;
+    scanControllerRef.current?.abort();
+    const controller = new AbortController();
+    const generation = scanGenerationRef.current + 1;
+    scanGenerationRef.current = generation;
+    scanControllerRef.current = controller;
     setError(null);
     setScanning(true);
 
@@ -112,16 +119,32 @@ export default function ScanPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chains: activeChains, minScore, autoTrade: true }),
+        signal: controller.signal,
       });
+      if (generation !== scanGenerationRef.current || controller.signal.aborted) return;
       if (!res.ok) throw new Error(`Scan failed: ${res.status}`);
       const data = await res.json();
+      if (generation !== scanGenerationRef.current || controller.signal.aborted) return;
+
+      try {
+        await useScannerStore.getState().fetchTrades(controller.signal);
+      } catch (tradeError) {
+        if (tradeError instanceof DOMException && tradeError.name === "AbortError") throw tradeError;
+      }
+      if (generation !== scanGenerationRef.current || controller.signal.aborted) return;
       setResults(Array.isArray(data.alerts) ? data.alerts : []);
-      // Refresh trades / trade stats from the scan response.
-      useScannerStore.getState().fetchTrades();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Scan failed");
+      if (
+        generation === scanGenerationRef.current &&
+        !(e instanceof DOMException && e.name === "AbortError")
+      ) {
+        setError(e instanceof Error ? e.message : "Scan failed");
+      }
     } finally {
-      setScanning(false);
+      if (generation === scanGenerationRef.current) {
+        scanControllerRef.current = null;
+        setScanning(false);
+      }
     }
   };
 
@@ -300,10 +323,10 @@ export default function ScanPanel() {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={runScan}
-        disabled={activeChains.length === 0}
+        disabled={activeChains.length === 0 || isScanning}
         className={`w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
           isScanning
-            ? "bg-tier-c/15 text-tier-c border border-tier-c/30"
+            ? "bg-tier-c/15 text-tier-c border border-tier-c/30 cursor-wait"
             : activeChains.length === 0
               ? "bg-muted text-muted-foreground cursor-not-allowed"
               : "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -317,8 +340,8 @@ export default function ScanPanel() {
             </motion.span>
           ) : (
             <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
-              {isScanning ? <Square size={16} /> : <Play size={16} />}
-              {isScanning ? "Stop" : "Start Scan"}
+              <Play size={16} />
+              Start Scan
             </motion.span>
           )}
         </AnimatePresence>

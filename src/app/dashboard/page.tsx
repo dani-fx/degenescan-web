@@ -18,14 +18,14 @@ import {
   Clock,
   Loader2,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   useScannerStore,
   type SignalItem,
   type TrackedItem,
   type SignalSource,
-  type TradeEntry,
 } from "@/lib/store";
+import { canonicalIdentity } from "@/lib/token-identity";
 import SignalCard from "@/components/signal-card";
 import TrackedRow from "@/components/tracked-row";
 import ScanPanel from "@/components/scan-panel";
@@ -33,6 +33,8 @@ import TradesPanel from "@/components/trades-panel";
 import Link from "next/link";
 
 function mapScoredToken(item: SignalItem, index: number): SignalItem {
+  const chain = item.chain ?? "solana";
+  const address = item.address ?? "";
   const age = item.ageMinutes;
   const txns = item.txns24h ?? { buys: 0, sells: 0 };
   const total = txns.buys + txns.sells;
@@ -40,10 +42,10 @@ function mapScoredToken(item: SignalItem, index: number): SignalItem {
     total > 0 ? Math.round((txns.buys / total) * 100) : 50;
 
   return {
-    id: item.address ?? String(index),
+    id: address ? canonicalIdentity(chain, address).key : `classic:${index}`,
     symbol: item.symbol ?? "???",
     name: item.name ?? "",
-    chain: item.chain ?? "solana",
+    chain,
     score: item.score ?? 0,
     tier: item.tier,
     priceUsd: item.priceUsd ?? 0,
@@ -55,7 +57,7 @@ function mapScoredToken(item: SignalItem, index: number): SignalItem {
     explanation: item.explanation ?? "",
     signals: item.signals ?? [],
     warnings: item.warnings ?? [],
-    address: item.address ?? "",
+    address,
     txns24h: txns,
     source: item.source ?? "classic",
     marketCap: item.marketCap,
@@ -75,7 +77,7 @@ function mapNarrativeGem(g: any, index: number): SignalItem {
   const tier =
     score >= 85 ? ("A" as const) : score >= 75 ? ("B" as const) : score >= 65 ? ("C" as const) : ("D" as const);
   return {
-    id: `narrative:${g.chain}:${g.baseMint}`,
+    id: canonicalIdentity(g.chain ?? "solana", g.baseMint).key,
     symbol: g.symbol ?? "???",
     name: g.name ?? "",
     chain: g.chain ?? "solana",
@@ -116,7 +118,7 @@ function mapGraduation(g: any, index: number): SignalItem {
   const tier =
     score >= 85 ? ("A" as const) : score >= 75 ? ("B" as const) : score >= 65 ? ("C" as const) : ("D" as const);
   return {
-    id: `graduation:${g.chain}:${g.mint}`,
+    id: canonicalIdentity(g.chain ?? "solana", g.mint).key,
     symbol: g.symbol ?? "???",
     name: g.name ?? "",
     chain: g.chain ?? "solana",
@@ -161,86 +163,71 @@ export default function DashboardPage() {
     error,
     narrativeFetchedAt,
     graduationFetchedAt,
-    refreshAllLaneData,
-    trades,
-    tradeStats,
+    pollIntervalMs,
+    setError,
+    hydrateClassicSignals,
+    hydrateSettings,
+    fetchTracked,
     fetchTrades,
-    closeTrade,
-    refreshTradePrices,
+    refreshClassicSignals,
   } = useScannerStore();
-  const refreshClassicSignals = useScannerStore((s) => s.refreshClassicSignals);
   const [showTracked, setShowTracked] = useState(true);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [graduationLoading, setGraduationLoading] = useState(false);
 
-  // Refresh narrative + graduation + tracked lanes on mount and periodically.
+  const refreshAllLanes = useCallback(async () => {
+    setNarrativeLoading(true);
+    setGraduationLoading(true);
+    const failures: unknown[] = [];
+
+    try {
+      await Promise.all([hydrateClassicSignals(), hydrateSettings()]);
+    } catch (failure) {
+      failures.push(failure);
+    }
+
+    const refreshNarrative = async () => {
+      const response = await fetch("/api/narrative");
+      if (!response.ok) throw new Error(`Narrative refresh failed (${response.status})`);
+      const data = (await response.json()) as { gems?: unknown };
+      if (!Array.isArray(data.gems)) throw new Error("Narrative response was malformed");
+      useScannerStore.getState().setNarrativeGems(data.gems);
+    };
+    const refreshGraduation = async () => {
+      const response = await fetch("/api/graduation");
+      if (!response.ok) throw new Error(`Graduation refresh failed (${response.status})`);
+      const data = (await response.json()) as { graduations?: unknown };
+      if (!Array.isArray(data.graduations)) throw new Error("Graduation response was malformed");
+      useScannerStore.getState().setGraduations(data.graduations);
+    };
+
+    const settled = await Promise.allSettled([
+      refreshClassicSignals(),
+      refreshNarrative(),
+      refreshGraduation(),
+      fetchTracked(),
+      fetchTrades(),
+    ]);
+    for (const result of settled) {
+      if (result.status === "rejected") failures.push(result.reason);
+    }
+
+    if (failures.length > 0) {
+      const first = failures[0];
+      setError(first instanceof Error ? first.message : "Refresh failed");
+    } else {
+      setError(null);
+    }
+    setNarrativeLoading(false);
+    setGraduationLoading(false);
+  }, [fetchTracked, fetchTrades, hydrateClassicSignals, hydrateSettings, refreshClassicSignals, setError]);
+
+  // Hydrate persisted classic results, immediately refresh every lane, then poll at the configured interval.
   useEffect(() => {
-    let cancelled = false;
-    const fetchNarrative = async () => {
-      setNarrativeLoading(true);
-      try {
-        const r = await fetch("/api/narrative");
-        const d = await r.json();
-        if (!cancelled && d.gems?.length) {
-          useScannerStore.getState().setNarrativeGems(d.gems);
-        }
-      } catch {}
-      finally {
-        if (!cancelled) setNarrativeLoading(false);
-      }
-    };
-    const fetchGraduation = async () => {
-      setGraduationLoading(true);
-      try {
-        const r = await fetch("/api/graduation");
-        const d = await r.json();
-        if (!cancelled && d.graduations?.length) {
-          useScannerStore.getState().setGraduations(d.graduations);
-        }
-      } catch {}
-      finally {
-        if (!cancelled) setGraduationLoading(false);
-      }
-    };
-
-    // Fetch tracked signals from the server-side SQLite store on mount and periodically.
-    const fetchTracked = async () => {
-      try {
-        const r = await fetch('/api/track');
-        const d: any = await r.json();
-        if (!cancelled && d.tracked?.length) {
-          const mapped: TrackedItem[] = d.tracked.map((t: any) => ({
-            id: t.id ?? t.token?.address ?? String(t.id),
-            symbol: t.token?.symbol ?? t.symbol ?? '???',
-            name: t.token?.name ?? t.name ?? '',
-            chain: t.token?.chain ?? t.chain ?? 'solana',
-            firstPrice: t.firstPrice ?? t.token?.priceUsd ?? 0,
-            nowPrice: t.token?.priceUsd ?? 0,
-            priceChange: typeof t.priceChange === 'number' ? t.priceChange : 0,
-            address: t.token?.address ?? t.id ?? '',
-            source: t.source ?? 'classic',
-          }))
-          useScannerStore.getState().updateTrackedPrices(mapped)
-        }
-      } catch {}
-    };
-
-    fetchNarrative();
-    fetchGraduation();
-    fetchTracked();
-    fetchTrades();
-    const iv = setInterval(() => {
-      fetchNarrative();
-      fetchGraduation();
-      fetchTracked();
-      fetchTrades();
-      refreshClassicSignals();
-    }, 5 * 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, []);
+    void refreshAllLanes();
+    const interval = setInterval(() => void refreshAllLanes(), pollIntervalMs);
+    return () => clearInterval(interval);
+  }, [pollIntervalMs, refreshAllLanes]);
 
   const mappedResults: SignalItem[] = results.map(mapScoredToken);
 
@@ -433,18 +420,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    refreshAllLaneData();
-                    setNarrativeLoading(true);
-                    setGraduationLoading(true);
-                    fetchTrades();
-                    fetch("/api/narrative").finally(() =>
-                      setNarrativeLoading(false)
-                    );
-                    fetch("/api/graduation").finally(() =>
-                      setGraduationLoading(false)
-                    );
-                  }}
+                  onClick={() => void refreshAllLanes()}
                   className="w-full text-xs text-muted-foreground hover:text-foreground py-2 rounded-lg border border-border/50 hover:border-border transition-colors"
                 >
                   {narrativeLoading || graduationLoading ? "Refreshing..." : "Refresh all lanes"}
@@ -511,7 +487,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <AnimatePresence>
                     {unifiedFeed.map((r: SignalItem, i: number) => (
-                      <SignalCard key={r.id} item={r} index={i} />
+                      <SignalCard key={`${r.source}:${r.id}`} item={r} index={i} />
                     ))}
                   </AnimatePresence>
                 </div>

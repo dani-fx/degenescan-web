@@ -25,7 +25,11 @@ export interface ScoredToken extends RawToken {
   explanation: string
   warnings: string[]
   fetchedAt: string
+  signalClass?: SignalClass
+  rugcheck?: { checked: boolean; safe: boolean }
 }
+
+export type SignalClass = 'HIGH' | 'LOW' | 'WATCH'
 
 export interface Signal {
   type: string
@@ -100,6 +104,8 @@ export interface BotConfig {
 export interface TrackedSignal {
   id: string
   token: ScoredToken
+  /** Immutable price when tracking began; live refreshes must never replace it. */
+  entryPriceUsd: number
   trackedAt: string
   lastRefreshedAt?: string
   outcomes: SignalOutcome[]
@@ -113,37 +119,22 @@ export interface SignalOutcome {
 
 export const DEFAULT_CONFIG: BotConfig = {
   chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'],
-  minLiquidityUsd: 1_000,
-  maxPairAgeMinutes: 720,
+  minLiquidityUsd: 30_000,
+  maxPairAgeMinutes: 240,
   minScoreA: 85,
   minScoreB: 75,
   minScoreC: 65,
   minVolumeSpikeMultiplier: 3.0,
-  minVolume24hUsd: 5_000,
+  minVolume24hUsd: 40_000,
   minBuyPressurePercent: 55,
   requireSocials: false,
   requireLpLocked: false,
   pollIntervalMs: 5 * 60_000,
-  maxAlertsPerPoll: 1,
+  maxAlertsPerPoll: 3,
   trackRefreshChangePercent: 5,
 }
 
-export const WEB_DEFAULT_CONFIG: BotConfig = {
-  chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'],
-  minLiquidityUsd: 1_000,
-  maxPairAgeMinutes: 720,
-  minScoreA: 65,
-  minScoreB: 55,
-  minScoreC: 45,
-  minVolumeSpikeMultiplier: 3.0,
-  minVolume24hUsd: 5_000,
-  minBuyPressurePercent: 50,
-  requireSocials: false,
-  requireLpLocked: false,
-  pollIntervalMs: 5 * 60_000,
-  maxAlertsPerPoll: 1,
-  trackRefreshChangePercent: 5,
-}
+export const WEB_DEFAULT_CONFIG = DEFAULT_CONFIG
 
 /** Auto-trade simulation: when a signal scores at or above this on a scan,
  *  a simulated trade is automatically opened (no real funds). Stored in

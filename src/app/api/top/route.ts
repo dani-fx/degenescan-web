@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getTrackedSignals } from '@/lib/signal-store'
 
 export async function GET() {
-  const tracked = getTrackedSignals()
+  const tracked = await getTrackedSignals()
   const top = tracked
     .map((t) => ({
       id: t.id,
@@ -14,9 +14,9 @@ export async function GET() {
       priceUsd: t.token.priceUsd,
       trackedAt: t.trackedAt,
       lastRefreshedAt: t.lastRefreshedAt,
-      source: (t.token as any).source ?? 'classic',
+      source: 'classic',
     }))
-    .sort((a, b) => a.change24h - b.change24h)
+    .sort((a, b) => b.change24h - a.change24h)
     .slice(0, 5)
   return NextResponse.json({ top })
 }

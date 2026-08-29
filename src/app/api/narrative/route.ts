@@ -1,28 +1,25 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import {
   fetchNarrativeGems,
   DEFAULT_NARRATIVE_CONFIG,
-  scoreNarrative,
 } from '@/lib/narrative'
 import type { NarrativeLaneFilters } from '@/lib/narrative-configs'
+import { validationError } from '@/lib/api'
+
+const querySchema = z.object({
+  maxAlertsPerCycle: z.coerce.number().int().min(1).max(10).default(DEFAULT_NARRATIVE_CONFIG.maxAlertsPerCycle),
+  minH1Buyers: z.coerce.number().int().min(0).max(1_000_000).default(DEFAULT_NARRATIVE_CONFIG.minH1Buyers),
+  minM15Buyers: z.coerce.number().int().min(0).max(1_000_000).default(DEFAULT_NARRATIVE_CONFIG.minM15Buyers),
+  minLiquidityUsd: z.coerce.number().min(0).max(1_000_000_000).default(DEFAULT_NARRATIVE_CONFIG.minLiquidityUsd),
+  minVolumeH1Usd: z.coerce.number().min(0).max(1_000_000_000).default(DEFAULT_NARRATIVE_CONFIG.minVolumeH1Usd),
+})
 
 export async function GET(request: Request) {
   const search = new URL(request.url).searchParams
-  const maxAlertsPerCycle = Number(
-    search.get('maxAlertsPerCycle') ?? DEFAULT_NARRATIVE_CONFIG.maxAlertsPerCycle
-  )
-  const minH1Buyers = Number(
-    search.get('minH1Buyers') ?? DEFAULT_NARRATIVE_CONFIG.minH1Buyers
-  )
-  const minM15Buyers = Number(
-    search.get('minM15Buyers') ?? DEFAULT_NARRATIVE_CONFIG.minM15Buyers
-  )
-  const minLiquidityUsd = Number(
-    search.get('minLiquidityUsd') ?? DEFAULT_NARRATIVE_CONFIG.minLiquidityUsd
-  )
-  const minVolumeH1Usd = Number(
-    search.get('minVolumeH1Usd') ?? DEFAULT_NARRATIVE_CONFIG.minVolumeH1Usd
-  )
+  const parsed = querySchema.safeParse(Object.fromEntries(search.entries()))
+  if (!parsed.success) return validationError(parsed.error)
+  const { maxAlertsPerCycle, minH1Buyers, minM15Buyers, minLiquidityUsd, minVolumeH1Usd } = parsed.data
 
   const filters = {
     minAgeMinutes: DEFAULT_NARRATIVE_CONFIG.minAgeMinutes,
@@ -31,9 +28,7 @@ export async function GET(request: Request) {
     minM15Buyers,
     minLiquidityUsd,
     minVolumeH1Usd,
-    maxAlertsPerCycle: Number.isFinite(maxAlertsPerCycle)
-      ? maxAlertsPerCycle
-      : DEFAULT_NARRATIVE_CONFIG.maxAlertsPerCycle,
+    maxAlertsPerCycle,
   } satisfies NarrativeLaneFilters
 
   try {

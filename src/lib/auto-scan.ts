@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import path from 'node:path'
+import { atomicWriteSync, dataPath, fetchWithTimeout } from './storage'
 
 // Auto-scan engine: periodically POSTs to the local /api/scan endpoint so
 // signals accumulate without anyone pressing SCAN. State persists across
@@ -7,7 +7,7 @@ import path from 'node:path'
 // Now passes minScore to match manual scan parity, and auto-trades signals
 // that cross AUTO_TRADE_MIN_SCORE.
 
-const STATE_PATH = path.join('/home/dani/degenescan-web/data', 'autoscan.json')
+const STATE_PATH = dataPath('autoscan.json')
 const INTERVAL_MS = 5 * 60_000 // 5 min, matches the Telegram bot cadence
 
 type TokenEntry = { symbol: string; chain: string; score?: number; reason: string }
@@ -22,8 +22,9 @@ type AutoScanState = {
   history?: RunEntry[]
 }
 
-let state: AutoScanState = loadState()
+const state: AutoScanState = loadState()
 let timer: ReturnType<typeof setInterval> | null = null
+let running = false
 
 function loadState(): AutoScanState {
   try {
@@ -42,39 +43,47 @@ function loadState(): AutoScanState {
 }
 
 function persist() {
-  fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true })
-  fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2))
+  atomicWriteSync(STATE_PATH, JSON.stringify(state, null, 2))
 }
 
 async function runOnce() {
+  if (running) return
+  running = true
   const port = process.env.PORT || '3000'
   try {
-    const resp = await fetch(`http://localhost:${port}/api/scan`, {
+    const resp = await fetchWithTimeout(`http://localhost:${port}/api/scan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: `http://localhost:${port}` },
       body: JSON.stringify({
         chains: ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'],
-        minScore: 65,           // parity with manual scan default
-        autoTrade: true,        // open simulated trades for signals >= 85
+        minScore: 65,
+        autoTrade: true,
       }),
     })
+    if (!resp.ok) throw new Error(`scan HTTP ${resp.status}`)
     const body = await resp.json()
-    // Resolve pending outcome checkpoints (15m/30m/60m/120m) each cycle.
+
     try {
-      await fetch(`http://localhost:${port}/api/stats?resolve=1`, { method: 'GET' })
-    } catch {}
-    // Also refresh open trade prices each cycle.
+      const result = await fetchWithTimeout(`http://localhost:${port}/api/stats?resolve=1`, { method: 'GET' })
+      if (!result.ok) throw new Error(`stats HTTP ${result.status}`)
+    } catch (error) {
+      console.warn('[auto-scan] outcome refresh failed:', (error as Error).message)
+    }
     try {
-      await fetch(`http://localhost:${port}/api/trades`, {
+      const result = await fetchWithTimeout(`http://localhost:${port}/api/trades`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: true }),
+        headers: { 'Content-Type': 'application/json', Origin: `http://localhost:${port}` },
+        body: JSON.stringify({ action: 'refresh' }),
       })
-    } catch {}
+      if (!result.ok) throw new Error(`trades HTTP ${result.status}`)
+    } catch (error) {
+      console.warn('[auto-scan] trade refresh failed:', (error as Error).message)
+    }
 
     const meta = body?.meta
     const autoTraded = (body?.autoTraded ?? []) as string[]
     state.lastRunAt = new Date().toISOString()
+    state.runs++
     state.lastResult = meta
       ? `scanned=${meta.scanned} candidates=${meta.candidates} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
       : 'ok'
@@ -84,22 +93,22 @@ async function runOnce() {
       entry.candidates = Array.isArray(body.details.candidates) ? body.details.candidates : []
       entry.rugs = Array.isArray(body.details.rugs) ? body.details.rugs : []
     }
-    if (Array.isArray(autoTraded) && autoTraded.length > 0) {
-      entry.autoTraded = autoTraded
-    }
+    if (autoTraded.length) entry.autoTraded = autoTraded
     if (!Array.isArray(state.history)) state.history = []
     state.history.push(entry)
     if (state.history.length > 50) state.history = state.history.slice(-50)
     console.log('[auto-scan]', state.lastResult)
-  } catch (e) {
+  } catch (error) {
     state.errors++
-    state.lastResult = `error: ${(e as Error).message}`
+    state.lastResult = `error: ${(error as Error).message}`
     if (!Array.isArray(state.history)) state.history = []
     state.history.push({ at: new Date().toISOString(), result: state.lastResult })
     if (state.history.length > 50) state.history = state.history.slice(-50)
-    console.warn('[auto-scan] failed:', (e as Error).message)
+    console.warn('[auto-scan] failed:', (error as Error).message)
+  } finally {
+    persist()
+    running = false
   }
-  persist()
 }
 
 function startTimer() {
@@ -134,5 +143,9 @@ export function setAutoScanEnabled(enabled: boolean): AutoScanState & { interval
 
 // Restore a previously-enabled schedule after a server restart.
 export function initAutoScan() {
-  if (state.enabled) startTimer()
+  if (process.env.NEXT_PHASE === 'phase-production-build' || process.env.npm_lifecycle_event === 'build') return
+  if (state.enabled) {
+    startTimer()
+    setTimeout(() => void runOnce(), 2_000)
+  }
 }

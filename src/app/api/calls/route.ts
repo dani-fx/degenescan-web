@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getTrackedSignals } from '@/lib/signal-store'
 
 export async function GET() {
-  const tracked = getTrackedSignals()
+  const tracked = await getTrackedSignals()
 
   const calls = tracked.map((t) => {
     const outcomes = t.outcomes
