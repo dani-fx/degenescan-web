@@ -26,12 +26,13 @@ export async function fetchLiveTokenSnapshot(address: string, chain: Chain): Pro
   const response = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(identity.address)}`, { headers: { Accept: 'application/json' } })
   if (!response.ok) return null
   const data = await response.json() as DexResponse
-  const pair = data.pairs?.find((candidate) => {
+  const matches = (data.pairs ?? []).filter((candidate) => {
     try {
       const candidateIdentity = canonicalIdentity(candidate.chainId ?? '', candidate.baseToken?.address ?? '')
       return candidateIdentity.key === identity.key
     } catch { return false }
   })
+  const pair = matches.sort((a, b) => Number(b.liquidity?.usd) - Number(a.liquidity?.usd))[0]
   const priceUsd = Number(pair?.priceUsd)
   if (!pair || !(priceUsd > 0)) return null
   return {

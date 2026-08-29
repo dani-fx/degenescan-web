@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './storage'
+
 export interface RugCheckResult {
   // If true, the token is mechanically a rug/honeypot and should be dropped.
   isRug: boolean
@@ -68,7 +70,7 @@ export async function rugcheckToken(mint: string, chain: string): Promise<RugChe
 
   const result = base(true)
   try {
-    const resp = await fetch(`${RUGCHECK_BASE}/tokens/${encodeURIComponent(mint)}/report`)
+    const resp = await fetchWithTimeout(`${RUGCHECK_BASE}/tokens/${encodeURIComponent(mint)}/report`)
     if (!resp.ok) {
       result.reasons.push(`rugcheck_http_${resp.status}`)
       result.error = `HTTP ${resp.status}`

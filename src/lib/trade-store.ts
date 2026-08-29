@@ -69,6 +69,8 @@ async function getDb(): Promise<Database> {
       }
       const tradeColumns = rows(db, `PRAGMA table_info(trades)`).map((row) => String(row.name))
       if (!tradeColumns.includes('closed_at')) db.run(`ALTER TABLE trades ADD COLUMN closed_at TEXT`)
+      if (!tradeColumns.includes('discovery_price_usd')) db.run(`ALTER TABLE trades ADD COLUMN discovery_price_usd REAL`)
+      if (!tradeColumns.includes('discovery_at')) db.run(`ALTER TABLE trades ADD COLUMN discovery_at TEXT`)
       db.run(`CREATE TABLE IF NOT EXISTS trade_checkpoints (
         id INTEGER PRIMARY KEY AUTOINCREMENT, trade_id INTEGER NOT NULL, label TEXT NOT NULL,
         price_usd REAL NOT NULL, pnl_pct REAL NOT NULL, at TEXT NOT NULL)`)
@@ -100,6 +102,8 @@ export async function openTrade(
   entryPriceUsd: number,
   entryScore: number,
   entryTier: TierKey,
+  discoveryPriceUsd?: number,
+  discoveryAt?: string,
 ): Promise<TradeEntry | null> {
   if (!(entryPriceUsd > 0) || !Number.isFinite(entryScore)) return null
   return mutate(async () => {
@@ -124,10 +128,12 @@ export async function openTrade(
         db.run('ROLLBACK')
         return null
       }
+      const firstPrice = discoveryPriceUsd && discoveryPriceUsd > 0 ? discoveryPriceUsd : entryPriceUsd
+      const firstSeenAt = discoveryAt && Number.isFinite(Date.parse(discoveryAt)) ? discoveryAt : now
       db.run(`INSERT INTO trades
-        (signal_id, symbol, chain, address, entry_price_usd, entry_score, entry_tier, entry_at, current_price_usd, pnl_pct, status, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'open', '')`,
-      [signalId, symbol, identity.chain, identity.address, entryPriceUsd, entryScore, entryTier, now, entryPriceUsd])
+        (signal_id, symbol, chain, address, entry_price_usd, entry_score, entry_tier, entry_at, current_price_usd, pnl_pct, status, note, discovery_price_usd, discovery_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'open', '', ?, ?)`,
+      [signalId, symbol, identity.chain, identity.address, entryPriceUsd, entryScore, entryTier, now, entryPriceUsd, firstPrice, firstSeenAt])
       if (db.getRowsModified() !== 1) throw new Error('trade insert failed')
       const id = Number(rows(db, 'SELECT last_insert_rowid() AS id')[0]?.id)
       db.run(`INSERT INTO trade_checkpoints (trade_id, label, price_usd, pnl_pct, at) VALUES (?, 'entry', ?, 0, ?)`, [id, entryPriceUsd, now])
@@ -231,6 +237,7 @@ async function getTradeById(db: Database, id: number): Promise<TradeEntry | unde
     id: Number(row.id), signal_id: String(row.signal_id), symbol: String(row.symbol), chain: String(row.chain) as TradeEntry['chain'],
     address: String(row.address), entry_price_usd: Number(row.entry_price_usd), entry_score: Number(row.entry_score),
     entry_tier: String(row.entry_tier) as TierKey, entry_at: String(row.entry_at), current_price_usd: Number(row.current_price_usd),
+    discovery_price_usd: Number(row.discovery_price_usd) || Number(row.entry_price_usd), discovery_at: String(row.discovery_at || row.entry_at),
     pnl_pct: Number(row.pnl_pct), status: String(row.status) as TradeEntry['status'], checkpoints, note: String(row.note ?? ''),
   }
 }

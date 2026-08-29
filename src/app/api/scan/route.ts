@@ -4,6 +4,9 @@ import { runScan } from './scan-runner'
 import { openTrade, getAllTrades, computeTradeStats } from '@/lib/trade-store'
 import { getConfig, getLatestResults, setLatestResults } from '@/lib/signal-store'
 import { isAutoTradeEligible } from '@/lib/scan-policy'
+import { getCandidatePool, removeCandidate } from '@/lib/candidate-store'
+import { canonicalIdentity } from '@/lib/token-identity'
+import { selectSimulatedTradeEntries } from '@/lib/candidate-policy'
 import { rateLimit, requireMutationAccess, validationError } from '@/lib/api'
 import type { Chain } from '@/lib/types'
 import { AUTO_TRADE_MIN_SCORE } from '@/lib/types'
@@ -35,11 +38,28 @@ export async function POST(request: NextRequest) {
     const displaySignals = [...result.alerts, ...result.watchlist]
     await setLatestResults(displaySignals)
     const autoTraded: string[] = []
-    if (autoTrade) {
-      for (const entry of result.alerts) {
-        if (!isAutoTradeEligible(entry, AUTO_TRADE_MIN_SCORE)) continue
-        const trade = await openTrade(`${entry.chain}:${entry.address}:${Date.now()}`, entry.symbol, entry.chain, entry.address, entry.priceUsd, entry.score, entry.tier)
-        if (trade) autoTraded.push(trade.symbol)
+    const promotionKeys = new Set(result.promotions.map((entry) => canonicalIdentity(entry.chain, entry.address).key))
+    const candidateRecords = result.promotions.length ? await getCandidatePool() : []
+    const candidatesByKey = new Map(candidateRecords.map((record) => [record.key, record]))
+    const tradeEntries = selectSimulatedTradeEntries(result.promotions, result.alerts, result.managedCandidateKeys, autoTrade)
+    for (const entry of tradeEntries) {
+      const key = canonicalIdentity(entry.chain, entry.address).key
+      if (!isAutoTradeEligible(entry, AUTO_TRADE_MIN_SCORE)) continue
+      const candidate = candidatesByKey.get(key)
+      const trade = await openTrade(
+        `${entry.chain}:${entry.address}:${Date.now()}`,
+        entry.symbol,
+        entry.chain,
+        entry.address,
+        entry.priceUsd,
+        entry.score,
+        entry.tier,
+        candidate?.firstSeenPriceUsd,
+        candidate?.firstSeenAt,
+      )
+      if (trade) {
+        autoTraded.push(trade.symbol)
+        if (promotionKeys.has(key)) await removeCandidate(key)
       }
     }
     const trades = await getAllTrades()
@@ -55,7 +75,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     const alerts = await getLatestResults()
-    return NextResponse.json({ alerts, count: alerts.length })
+    const candidates = await getCandidatePool()
+    return NextResponse.json({ alerts, count: alerts.length, candidates, candidateCount: candidates.length })
   } catch (error) {
     console.error('Scan read error', error)
     return NextResponse.json({ error: 'Scan read failed' }, { status: 500 })

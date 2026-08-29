@@ -21,8 +21,11 @@ describe('sql.js trade lifecycle', () => {
   it('prevents duplicate opens, permits a retrade after close, and caps open positions at three', async () => {
     const store = await import('./trade-store')
 
-    const first = await store.openTrade('signal-1', 'ONE', 'ETH', '0xAbC', 1, 80, 'A')
-    expect(first).toMatchObject({ signal_id: 'signal-1', chain: 'ethereum', address: '0xabc', status: 'open' })
+    const first = await store.openTrade('signal-1', 'ONE', 'ETH', '0xAbC', 1, 80, 'A', 0.8, '2026-08-29T10:00:00.000Z')
+    expect(first).toMatchObject({
+      signal_id: 'signal-1', chain: 'ethereum', address: '0xabc', status: 'open',
+      discovery_price_usd: 0.8, discovery_at: '2026-08-29T10:00:00.000Z',
+    })
     expect(first?.checkpoints).toMatchObject([{ label: 'entry', price_usd: 1, pnl_pct: 0 }])
 
     await expect(store.openTrade('signal-duplicate', 'ONE', 'ethereum', '0xabc', 1, 80, 'A')).resolves.toBeNull()

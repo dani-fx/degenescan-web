@@ -49,7 +49,10 @@ function PnLIndicator({ pnl }: { pnl: number }) {
 }
 
 function TradeRow({ trade, onClose }: { trade: TradeEntry; onClose: () => void }) {
-  const isUp = trade.pnl_pct > 0;
+  const confirmationMove = trade.discovery_price_usd > 0
+    ? ((trade.entry_price_usd - trade.discovery_price_usd) / trade.discovery_price_usd) * 100
+    : 0;
+  const promoted = trade.discovery_at !== trade.entry_at;
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -81,7 +84,9 @@ function TradeRow({ trade, onClose }: { trade: TradeEntry; onClose: () => void }
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
           <div className="text-xs text-muted-foreground">
-            Entry {fmtUsd(trade.entry_price_usd)}
+            {promoted
+              ? `Seen ${fmtUsd(trade.discovery_price_usd)} → Entry ${fmtUsd(trade.entry_price_usd)} (${fmtPct(confirmationMove)})`
+              : `Entry ${fmtUsd(trade.entry_price_usd)}`}
           </div>
           <div className="text-sm font-semibold text-foreground">
             Now {fmtUsd(trade.current_price_usd)}

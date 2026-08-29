@@ -152,6 +152,8 @@ export interface TradeEntry {
   entry_score: number
   entry_tier: TierKey
   entry_at: string
+  discovery_price_usd: number
+  discovery_at: string
   current_price_usd: number
   pnl_pct: number
   status: 'open' | 'closed'
