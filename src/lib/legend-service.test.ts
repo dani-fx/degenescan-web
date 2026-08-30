@@ -68,6 +68,29 @@ describe('legend service', () => {
       token({ address: 'MintUnchecked', rugcheck: { checked: false, safe: false } }),
     ], config, NOW)
     expect(result.records).toEqual([])
+    expect(result.admissionDiagnostics).toEqual({
+      evaluated: 2,
+      eligible: 0,
+      rejected: 2,
+      reasons: { non_solana: 1, rugcheck_unchecked: 1 },
+    })
+  })
+
+  it('reports only new admission attempts and their exact rejection reasons', async () => {
+    state.records = [observeLegend(null, token({ address: 'Known' }), NOW - 5 * 60_000)!]
+    const result = await refreshLegendObservatory([
+      token({ address: 'Known', score: 40 }),
+      token({ address: 'Low', score: 64 }),
+      token({ address: 'Dry', liquidity: 0 }),
+      token({ address: 'Eligible' }),
+    ], config, NOW)
+
+    expect(result.admissionDiagnostics).toEqual({
+      evaluated: 3,
+      eligible: 1,
+      rejected: 2,
+      reasons: { score_below_65: 1, invalid_liquidity: 1 },
+    })
   })
 
   it('refreshes the least recently observed records instead of starving low-ranked records', async () => {

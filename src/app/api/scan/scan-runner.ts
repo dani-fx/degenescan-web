@@ -58,6 +58,7 @@ export async function runScan(chains: Chain[], config: BotConfig, minScore: numb
     return {
       records: [], added: 0, refreshed: 0, refreshFailed: 0,
       stageCounts: { WATCH: 0, EARLY_ALERT: 0, BREAKOUT_CANDIDATE: 0, PERSISTENT_LEADER: 0 },
+      admissionDiagnostics: { evaluated: 0, eligible: 0, rejected: 0, reasons: {} },
     }
   })
   const displayPassed = passed.filter((token) => token.tier !== 'D' && token.score >= minScore)

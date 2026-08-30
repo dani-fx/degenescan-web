@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       legendRefreshed: legendObservatory.refreshed,
       legendRefreshFailed: legendObservatory.refreshFailed,
       legendStages: legendObservatory.stageCounts,
+      legendAdmissionDiagnostics: legendObservatory.admissionDiagnostics,
     }
     const trades = await getAllTrades()
     return NextResponse.json({

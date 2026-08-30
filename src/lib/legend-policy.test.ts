@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { observeLegend, pruneLegendObservatory, type LegendRecord } from './legend-policy'
+import { legendAdmissionRejection, observeLegend, pruneLegendObservatory, type LegendRecord } from './legend-policy'
 import type { ScoredToken } from './types'
 
 const NOW = Date.parse('2026-08-29T18:00:00.000Z')
@@ -19,6 +19,16 @@ function token(overrides: Partial<ScoredToken> = {}): ScoredToken {
 }
 
 describe('legend policy', () => {
+  it('explains each failed new-admission gate without changing eligibility', () => {
+    expect(legendAdmissionRejection(token({ chain: 'base' }))).toBe('non_solana')
+    expect(legendAdmissionRejection(token({ rugcheck: { checked: false, safe: false } }))).toBe('rugcheck_unchecked')
+    expect(legendAdmissionRejection(token({ rugcheck: { checked: true, safe: false } }))).toBe('rugcheck_unsafe')
+    expect(legendAdmissionRejection(token({ priceUsd: 0 }))).toBe('invalid_price')
+    expect(legendAdmissionRejection(token({ liquidity: Number.NaN }))).toBe('invalid_liquidity')
+    expect(legendAdmissionRejection(token({ score: 64 }))).toBe('score_below_65')
+    expect(legendAdmissionRejection(token())).toBeNull()
+  })
+
   it('rejects unchecked, unsafe, and non-Solana tokens', () => {
     expect(observeLegend(null, token({ rugcheck: { checked: false, safe: false } }), NOW)).toBeNull()
     expect(observeLegend(null, token({ rugcheck: { checked: true, safe: false } }), NOW)).toBeNull()

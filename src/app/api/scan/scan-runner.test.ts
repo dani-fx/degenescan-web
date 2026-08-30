@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   refreshLegendObservatory: vi.fn(async () => ({
     records: [], added: 0, refreshed: 0, refreshFailed: 0,
     stageCounts: { WATCH: 0, EARLY_ALERT: 0, BREAKOUT_CANDIDATE: 0, PERSISTENT_LEADER: 0 },
+    admissionDiagnostics: { evaluated: 0, eligible: 0, rejected: 0, reasons: {} },
   })),
 }))
 
@@ -75,6 +76,7 @@ describe('global scan selection', () => {
       settleLegend = () => resolve({
         records: [], added: 0, refreshed: 0, refreshFailed: 0,
         stageCounts: { WATCH: 0, EARLY_ALERT: 0, BREAKOUT_CANDIDATE: 0, PERSISTENT_LEADER: 0 },
+        admissionDiagnostics: { evaluated: 0, eligible: 0, rejected: 0, reasons: {} },
       })
     }))
 

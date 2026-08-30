@@ -1,8 +1,10 @@
 import { applyRugcheck, scoreAndClassifyToken } from './evaluate-token'
 import {
   LEGEND_MAX_RECORDS,
+  legendAdmissionRejection,
   observeLegend,
   pruneLegendObservatory,
+  type LegendAdmissionRejection,
   type LegendRecord,
 } from './legend-policy'
 import { mutateLegendRecords } from './legend-store'
@@ -19,6 +21,12 @@ export interface LegendObservatoryResult {
   refreshed: number
   refreshFailed: number
   stageCounts: Record<LegendRecord['stage'], number>
+  admissionDiagnostics: {
+    evaluated: number
+    eligible: number
+    rejected: number
+    reasons: Partial<Record<LegendAdmissionRejection, number>>
+  }
 }
 
 function mergeLiveToken(previous: ScoredToken, snapshot: Awaited<ReturnType<typeof fetchLiveTokenSnapshot>>): RawToken | null {
@@ -125,8 +133,22 @@ export async function refreshLegendObservatory(
 
     const knownKeys = new Set(current.map((record) => record.key))
     let added = 0
+    const admissionDiagnostics: LegendObservatoryResult['admissionDiagnostics'] = {
+      evaluated: 0,
+      eligible: 0,
+      rejected: 0,
+      reasons: {},
+    }
     for (const [key, token] of discoveredByKey) {
       if (knownKeys.has(key)) continue
+      admissionDiagnostics.evaluated += 1
+      const rejection = legendAdmissionRejection(token)
+      if (rejection) {
+        admissionDiagnostics.rejected += 1
+        admissionDiagnostics.reasons[rejection] = (admissionDiagnostics.reasons[rejection] ?? 0) + 1
+        continue
+      }
+      admissionDiagnostics.eligible += 1
       const record = observeLegend(null, token, nowMs)
       if (!record) continue
       next.push(record)
@@ -141,6 +163,7 @@ export async function refreshLegendObservatory(
       refreshed,
       refreshFailed,
       stageCounts: countStages(records),
+      admissionDiagnostics,
     }
     return { records, result }
   }, nowMs)

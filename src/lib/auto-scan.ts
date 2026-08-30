@@ -86,10 +86,23 @@ async function runOnce() {
 
     const meta = body?.meta
     const autoTraded = (body?.autoTraded ?? []) as string[]
+    const admission = meta?.legendAdmissionDiagnostics
+    const admissionReasons = admission && typeof admission.reasons === 'object' && admission.reasons
+      ? Object.entries(admission.reasons as Record<string, unknown>)
+          .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0)
+          .map(([reason, count]) => `${reason}=${count}`)
+          .join(',')
+      : ''
+    const admissionStatus = admission
+      && Number.isFinite(admission.evaluated)
+      && Number.isFinite(admission.eligible)
+      && Number.isFinite(admission.rejected)
+      ? ` legendNew=${admission.eligible}/${admission.evaluated} rejected=${admission.rejected}${admissionReasons ? `(${admissionReasons})` : ''}`
+      : ''
     state.lastRunAt = new Date().toISOString()
     state.runs++
     state.lastResult = meta
-      ? `scanned=${meta.scanned} candidates=${meta.candidates} pool=${meta.candidatePool ?? 0} promoted=${meta.candidatePromotions ?? 0} legends=${meta.legendPool ?? 0} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
+      ? `scanned=${meta.scanned} candidates=${meta.candidates} pool=${meta.candidatePool ?? 0} promoted=${meta.candidatePromotions ?? 0} legends=${meta.legendPool ?? 0}${admissionStatus} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
       : 'ok'
     const entry: RunEntry = { at: state.lastRunAt, result: state.lastResult }
     if (body?.details && typeof body.details === 'object') {

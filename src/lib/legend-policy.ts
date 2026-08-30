@@ -3,6 +3,13 @@ import type { ScoredToken } from './types'
 
 export type LegendStage = 'WATCH' | 'EARLY_ALERT' | 'BREAKOUT_CANDIDATE' | 'PERSISTENT_LEADER'
 export type LegendEntryQuality = 'EARLY' | 'EXTENDED' | 'OVERHEATED'
+export type LegendAdmissionRejection =
+  | 'non_solana'
+  | 'rugcheck_unchecked'
+  | 'rugcheck_unsafe'
+  | 'invalid_price'
+  | 'invalid_liquidity'
+  | 'score_below_65'
 
 export interface LegendSnapshot {
   observedAt: string
@@ -79,6 +86,16 @@ function isSafeObservation(token: ScoredToken): boolean {
     && token.priceUsd > 0
     && Number.isFinite(token.liquidity)
     && token.liquidity > 0
+}
+
+export function legendAdmissionRejection(token: ScoredToken): LegendAdmissionRejection | null {
+  if (token.chain !== 'solana') return 'non_solana'
+  if (token.rugcheck?.checked !== true) return 'rugcheck_unchecked'
+  if (token.rugcheck.safe !== true) return 'rugcheck_unsafe'
+  if (!Number.isFinite(token.priceUsd) || token.priceUsd <= 0) return 'invalid_price'
+  if (!Number.isFinite(token.liquidity) || token.liquidity <= 0) return 'invalid_liquidity'
+  if (!Number.isFinite(token.score) || token.score < LEGEND_MIN_SCORE) return 'score_below_65'
+  return null
 }
 
 function snapshotOf(token: ScoredToken, nowMs: number): LegendSnapshot {
@@ -186,7 +203,7 @@ function scoreObservation(token: ScoredToken, snapshots: LegendSnapshot[], first
 export function observeLegend(previous: LegendRecord | null, token: ScoredToken, nowMs = Date.now()): LegendRecord | null {
   if (!isSafeObservation(token)) return null
   const safeToken = sanitizeToken(token)
-  if (!previous && safeToken.score < LEGEND_MIN_SCORE) return null
+  if (!previous && legendAdmissionRejection(safeToken)) return null
   const key = canonicalIdentity(safeToken.chain, safeToken.address).key
   if (previous && previous.key !== key) throw new Error('Legend identity mismatch')
 
