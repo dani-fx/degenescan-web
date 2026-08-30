@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { advanceTrack, qualifyWallet, unseenTrades } from './engine.js'
 import { normalizeIntervalMs, normalizePort } from './config.js'
 import { parseRugReport } from './sources.js'
+import { sanitizeText } from './validation.js'
 import type { Snapshot, TokenTrack, WalletStats } from './types.js'
 
 const snap = (overrides: Partial<Snapshot> = {}): Snapshot => ({
@@ -76,6 +77,10 @@ test('malformed RugCheck reports never become safe', () => {
 test('processed trade IDs cannot replay as new entries', () => {
   const trades = [{ id: 'old', wallet: '11111111111111111111111111111111', at: '2026-08-30T10:00:00.000Z', priceUsd: 1 }]
   assert.equal(unseenTrades(trades, ['old']).length, 0)
+})
+
+test('display metadata strips control and bidi characters', () => {
+  assert.equal(sanitizeText('\u202eNEW\u0000', 32), 'NEW')
 })
 
 test('wallet quality requires a real resolved track record', () => {

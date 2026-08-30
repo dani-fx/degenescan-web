@@ -7,3 +7,7 @@ export function isSolanaAddress(value: unknown): value is string {
 export function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value))
 }
+
+export function sanitizeText(value: unknown, maxLength: number): string {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '').slice(0, maxLength)
+}

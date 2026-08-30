@@ -19,7 +19,7 @@ function publicState() {
 const server = http.createServer((request, response) => {
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.setHeader('Cache-Control', 'no-store')
-  if (request.method === 'GET' && (request.url === '/' || request.url === '/health')) {
+  if (request.method === 'GET' && (request.url === '/' || request.url?.startsWith('/health'))) {
     response.end(JSON.stringify(publicState()))
     return
   }

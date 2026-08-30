@@ -1,5 +1,5 @@
 import type { Snapshot } from './types.js'
-import { isIsoDate, isSolanaAddress } from './validation.js'
+import { isIsoDate, isSolanaAddress, sanitizeText } from './validation.js'
 
 const GT = 'https://api.geckoterminal.com/api/v2'
 const REQUEST_MS = 12_000
@@ -64,8 +64,8 @@ function parsePools(payload: any): PoolCandidate[] {
     const tx15 = attr.transactions?.m15 || {}
     const token = meta.get(relation)
     pools.push({
-      mint, poolAddress, symbol: (token?.symbol || String(attr.name || '???').split('/')[0].trim()).slice(0, 32),
-      name: (token?.name || String(attr.name || '')).slice(0, 128), createdAt,
+      mint, poolAddress, symbol: sanitizeText(token?.symbol || String(attr.name || '???').split('/')[0].trim(), 32),
+      name: sanitizeText(token?.name || String(attr.name || ''), 128), createdAt,
       priceUsd: numberOf(attr.base_token_price_usd), liquidityUsd: numberOf(attr.reserve_in_usd),
       volumeH1Usd: numberOf(attr.volume_usd?.h1), h1Buyers: numberOf(tx1.buyers),
       h1Sellers: numberOf(tx1.sellers), m15Buyers: numberOf(tx15.buyers),

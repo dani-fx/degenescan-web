@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BuyTrade, RunnerSignal, ServiceState, Snapshot, Stage, TokenTrack, WalletPick, WalletStats } from './types.js'
-import { isIsoDate, isSolanaAddress } from './validation.js'
+import { isIsoDate, isSolanaAddress, sanitizeText } from './validation.js'
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data')
 const statePath = path.join(dataDir, 'experimental-state.json')
@@ -48,7 +48,7 @@ function sanitizeTrack(key: string, value: unknown): TokenTrack | null {
   if (['LIQUIDITY_GROWING', 'HOLDERS_ACCELERATING', 'RUNNER'].includes(track.stage) && !stageTimes.LIQUIDITY_GROWING) return null
   if (['HOLDERS_ACCELERATING', 'RUNNER'].includes(track.stage) && (!holderBaseline || !stageTimes.HOLDERS_ACCELERATING)) return null
   return {
-    ...track, stageTimes, organicBaseline, holderBaseline, holderSamples,
+    ...track, symbol: sanitizeText(track.symbol, 32), name: sanitizeText(track.name, 128), stageTimes, organicBaseline, holderBaseline, holderSamples,
     reasons: Array.isArray(track.reasons) ? track.reasons.filter((reason) => typeof reason === 'string').slice(-20) : [],
     alerted: Boolean(track.alerted),
     seenTradeIds: Array.isArray(track.seenTradeIds) ? track.seenTradeIds.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 128).slice(-500) : [],
@@ -84,7 +84,7 @@ function sanitizeSignal(value: unknown): RunnerSignal | null {
     || !finite(signal.liquidityGrowthPct) || !finite(signal.holderGrowthPct)
     || !Array.isArray(signal.qualifiedWallets) || !signal.qualifiedWallets.every(isSolanaAddress)) return null
   return {
-    ...signal, symbol: signal.symbol.slice(0, 32), qualifiedWallets: signal.qualifiedWallets.slice(0, 20),
+    ...signal, symbol: sanitizeText(signal.symbol, 32), qualifiedWallets: signal.qualifiedWallets.slice(0, 20),
     reasons: Array.isArray(signal.reasons) ? signal.reasons.filter((reason) => typeof reason === 'string').slice(-20) : [],
   }
 }
