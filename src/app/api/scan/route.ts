@@ -5,6 +5,7 @@ import { openTrade, getAllTrades, computeTradeStats } from '@/lib/trade-store'
 import { getConfig, getLatestResults, setLatestResults } from '@/lib/signal-store'
 import { isAutoTradeEligible } from '@/lib/scan-policy'
 import { getCandidatePool, removeCandidate } from '@/lib/candidate-store'
+import { getLegendRecordsSafe } from '@/lib/legend-store'
 import { canonicalIdentity } from '@/lib/token-identity'
 import { selectSimulatedTradeEntries } from '@/lib/candidate-policy'
 import { rateLimit, requireMutationAccess, validationError } from '@/lib/api'
@@ -62,8 +63,27 @@ export async function POST(request: NextRequest) {
         if (promotionKeys.has(key)) await removeCandidate(key)
       }
     }
+    // Candidate promotions and simulated-trade writes are authoritative and
+    // complete before the shadow-only observatory is awaited.
+    const { legendUpdate, ...publicResult } = result
+    const legendObservatory = await legendUpdate
+    const meta = {
+      ...publicResult.meta,
+      legendPool: legendObservatory.records.length,
+      legendAdded: legendObservatory.added,
+      legendRefreshed: legendObservatory.refreshed,
+      legendRefreshFailed: legendObservatory.refreshFailed,
+      legendStages: legendObservatory.stageCounts,
+    }
     const trades = await getAllTrades()
-    return NextResponse.json({ ...result, alerts: displaySignals, autoTraded, tradeStats: computeTradeStats(trades) })
+    return NextResponse.json({
+      ...publicResult,
+      meta,
+      legends: legendObservatory.records,
+      alerts: displaySignals,
+      autoTraded,
+      tradeStats: computeTradeStats(trades),
+    })
   } catch (error) {
     console.error('Scan API error', error)
     return NextResponse.json({ error: 'Scan failed' }, { status: 500 })
@@ -76,7 +96,16 @@ export async function GET() {
   try {
     const alerts = await getLatestResults()
     const candidates = await getCandidatePool()
-    return NextResponse.json({ alerts, count: alerts.length, candidates, candidateCount: candidates.length })
+    const legendRead = await getLegendRecordsSafe()
+    return NextResponse.json({
+      alerts,
+      count: alerts.length,
+      candidates,
+      candidateCount: candidates.length,
+      legends: legendRead.records,
+      legendCount: legendRead.records.length,
+      legendUnavailable: legendRead.unavailable,
+    })
   } catch (error) {
     console.error('Scan read error', error)
     return NextResponse.json({ error: 'Scan read failed' }, { status: 500 })

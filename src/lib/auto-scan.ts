@@ -89,7 +89,7 @@ async function runOnce() {
     state.lastRunAt = new Date().toISOString()
     state.runs++
     state.lastResult = meta
-      ? `scanned=${meta.scanned} candidates=${meta.candidates} pool=${meta.candidatePool ?? 0} promoted=${meta.candidatePromotions ?? 0} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
+      ? `scanned=${meta.scanned} candidates=${meta.candidates} pool=${meta.candidatePool ?? 0} promoted=${meta.candidatePromotions ?? 0} legends=${meta.legendPool ?? 0} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
       : 'ok'
     const entry: RunEntry = { at: state.lastRunAt, result: state.lastResult }
     if (body?.details && typeof body.details === 'object') {

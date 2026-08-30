@@ -4,6 +4,8 @@ import { record } from '@/lib/outcome-store'
 import { applyRugcheck, scoreAndClassifyToken } from '@/lib/evaluate-token'
 import { refreshCandidatePipeline } from '@/lib/candidate-service'
 import { CANDIDATE_MIN_SCORE } from '@/lib/candidate-policy'
+import { refreshLegendObservatory } from '@/lib/legend-service'
+import type { LegendObservatoryResult } from '@/lib/legend-service'
 import { AUTO_TRADE_MIN_SCORE, type BotConfig, type Chain, type ScoredToken } from '@/lib/types'
 
 type TokenDetail = { symbol: string; chain: string; score?: number; reason: string }
@@ -12,6 +14,7 @@ export interface ScanResult {
   watchlist: ScoredToken[]
   promotions: ScoredToken[]
   managedCandidateKeys: string[]
+  legendUpdate: Promise<LegendObservatoryResult>
   meta: Record<string, unknown>
   details: { scanned: TokenDetail[]; candidates: TokenDetail[]; rugs: TokenDetail[] }
 }
@@ -48,6 +51,15 @@ export async function runScan(chains: Chain[], config: BotConfig, minScore: numb
   }
 
   const candidatePipeline = await refreshCandidatePipeline(passed, config, AUTO_TRADE_MIN_SCORE)
+  const legendUpdate: Promise<LegendObservatoryResult> = refreshLegendObservatory(passed, config).catch((error) => {
+    // The observatory is research-only. Its storage/provider failures must
+    // never block the authoritative scan, candidate pipeline, or trading path.
+    console.error('Legend observatory update failed', error)
+    return {
+      records: [], added: 0, refreshed: 0, refreshFailed: 0,
+      stageCounts: { WATCH: 0, EARLY_ALERT: 0, BREAKOUT_CANDIDATE: 0, PERSISTENT_LEADER: 0 },
+    }
+  })
   const displayPassed = passed.filter((token) => token.tier !== 'D' && token.score >= minScore)
 
   const watchlist = displayPassed.filter((token) => token.signalClass === 'WATCH').slice(0, 6)
@@ -66,6 +78,7 @@ export async function runScan(chains: Chain[], config: BotConfig, minScore: numb
   return {
     alerts, watchlist, promotions: candidatePipeline.promotions,
     managedCandidateKeys: candidatePipeline.managedKeys,
+    legendUpdate,
     meta: {
       chains, count: alerts.length, high: alerts.filter((token) => token.signalClass === 'HIGH').length,
       low: alerts.filter((token) => token.signalClass === 'LOW').length, watch: watchlist.length, scanned,
