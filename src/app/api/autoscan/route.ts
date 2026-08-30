@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAutoScanState, initAutoScan, setAutoScanEnabled } from '@/lib/auto-scan'
+import { getAutoScanState, setAutoScanEnabled } from '@/lib/auto-scan'
 import { rateLimit, requireMutationAccess } from '@/lib/api'
-
-// The root layout is statically rendered, so its module-level initializer only
-// runs during the build. Initialize again when the server API module loads so a
-// persisted enabled schedule actually resumes after a Railway restart.
-initAutoScan()
 
 export async function GET() {
   return NextResponse.json(getAutoScanState())

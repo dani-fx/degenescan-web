@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { initAutoScan } from "@/lib/auto-scan";
-
-// Resume the auto-scan schedule if it was enabled before the last restart.
-initAutoScan();
 
 const inter = Inter({
   subsets: ["latin"],

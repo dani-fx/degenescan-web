@@ -157,5 +157,3 @@ export async function removeTrackedSignal(chain: string, address: string): Promi
   } catch (error) { tracked.set(identity.key, existing); throw error }
   return true
 }
-
-void ready()

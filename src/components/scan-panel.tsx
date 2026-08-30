@@ -221,7 +221,7 @@ export default function ScanPanel() {
           <div>
             <p className="text-xs font-medium">Auto-scan</p>
             <p className="text-[10px] text-muted-foreground">
-              {autoOn ? "Every 5 min · all chains" : "Manual only"}
+              {autoOn ? `Every ${Math.max(0.5, pollIntervalMs / 60000).toFixed(pollIntervalMs < 60_000 ? 1 : 0)} min · all chains` : "Manual only"}
             </p>
           </div>
         </div>

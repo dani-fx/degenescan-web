@@ -8,7 +8,10 @@ import { atomicWriteSync, dataPath, fetchWithTimeout } from './storage'
 // that cross AUTO_TRADE_MIN_SCORE.
 
 const STATE_PATH = dataPath('autoscan.json')
-const INTERVAL_MS = 5 * 60_000 // 5 min, matches the Telegram bot cadence
+const DEFAULT_INTERVAL_MS = 5 * 60_000
+const MIN_INTERVAL_MS = 30_000
+const MAX_INTERVAL_MS = 24 * 60 * 60_000
+const CONFIG_REFRESH_INTERVAL_MS = 30_000
 
 type TokenEntry = { symbol: string; chain: string; score?: number; reason: string }
 type RunEntry = { at: string; result: string; scanned?: TokenEntry[]; candidates?: TokenEntry[]; rugs?: TokenEntry[]; autoTraded?: string[] }
@@ -22,9 +25,61 @@ type AutoScanState = {
   history?: RunEntry[]
 }
 
-const state: AutoScanState = loadState()
-let timer: ReturnType<typeof setInterval> | null = null
-let running = false
+type IntervalConfigLoader = () => Promise<{ pollIntervalMs: unknown }>
+type AutoScanRuntime = {
+  state: AutoScanState
+  timer: ReturnType<typeof setInterval> | null
+  running: boolean
+  intervalMs: number
+  initializationStarted: boolean
+  intervalConfigLoader: IntervalConfigLoader | null
+  configRefreshTimer: ReturnType<typeof setInterval> | null
+  configRefreshPromise: Promise<void> | null
+}
+
+const AUTO_SCAN_RUNTIME = Symbol.for('degenescan.autoscan.runtime')
+const runtimeHost = globalThis as unknown as { [key: symbol]: AutoScanRuntime | undefined }
+const runtime = runtimeHost[AUTO_SCAN_RUNTIME] ?? {
+  state: loadState(),
+  timer: null,
+  running: false,
+  intervalMs: DEFAULT_INTERVAL_MS,
+  initializationStarted: false,
+  intervalConfigLoader: null,
+  configRefreshTimer: null,
+  configRefreshPromise: null,
+}
+runtimeHost[AUTO_SCAN_RUNTIME] = runtime
+
+export function normalizeAutoScanIntervalMs(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return DEFAULT_INTERVAL_MS
+  return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.round(parsed)))
+}
+
+async function refreshConfiguredInterval(): Promise<void> {
+  if (!runtime.intervalConfigLoader) return
+  if (runtime.configRefreshPromise) return runtime.configRefreshPromise
+  runtime.configRefreshPromise = (async () => {
+    try {
+      setAutoScanInterval((await runtime.intervalConfigLoader!()).pollIntervalMs)
+    } catch (error) {
+      console.warn('[auto-scan] interval refresh failed:', (error as Error).message)
+    }
+  })()
+  try {
+    await runtime.configRefreshPromise
+  } finally {
+    runtime.configRefreshPromise = null
+  }
+}
+
+function startConfigRefreshTimer(): void {
+  if (runtime.configRefreshTimer || !runtime.intervalConfigLoader) return
+  runtime.configRefreshTimer = setInterval(() => {
+    void refreshConfiguredInterval()
+  }, CONFIG_REFRESH_INTERVAL_MS)
+}
 
 function loadState(): AutoScanState {
   try {
@@ -43,12 +98,12 @@ function loadState(): AutoScanState {
 }
 
 function persist() {
-  atomicWriteSync(STATE_PATH, JSON.stringify(state, null, 2))
+  atomicWriteSync(STATE_PATH, JSON.stringify(runtime.state, null, 2))
 }
 
 async function runOnce() {
-  if (running) return
-  running = true
+  if (runtime.running) return
+  runtime.running = true
   const port = process.env.PORT || '3000'
   try {
     const resp = await fetchWithTimeout(`http://localhost:${port}/api/scan`, {
@@ -99,55 +154,70 @@ async function runOnce() {
       && Number.isFinite(admission.rejected)
       ? ` legendNew=${admission.eligible}/${admission.evaluated} rejected=${admission.rejected}${admissionReasons ? `(${admissionReasons})` : ''}`
       : ''
-    state.lastRunAt = new Date().toISOString()
-    state.runs++
-    state.lastResult = meta
+    runtime.state.lastRunAt = new Date().toISOString()
+    runtime.state.runs++
+    runtime.state.lastResult = meta
       ? `scanned=${meta.scanned} candidates=${meta.candidates} pool=${meta.candidatePool ?? 0} promoted=${meta.candidatePromotions ?? 0} legends=${meta.legendPool ?? 0}${admissionStatus} rugs=${meta.rugsDropped}${autoTraded.length ? ` autoTraded=${autoTraded.length}` : ''}`
       : 'ok'
-    const entry: RunEntry = { at: state.lastRunAt, result: state.lastResult }
+    const entry: RunEntry = { at: runtime.state.lastRunAt, result: runtime.state.lastResult }
     if (body?.details && typeof body.details === 'object') {
       entry.scanned = Array.isArray(body.details.scanned) ? body.details.scanned : []
       entry.candidates = Array.isArray(body.details.candidates) ? body.details.candidates : []
       entry.rugs = Array.isArray(body.details.rugs) ? body.details.rugs : []
     }
     if (autoTraded.length) entry.autoTraded = autoTraded
-    if (!Array.isArray(state.history)) state.history = []
-    state.history.push(entry)
-    if (state.history.length > 50) state.history = state.history.slice(-50)
-    console.log('[auto-scan]', state.lastResult)
+    if (!Array.isArray(runtime.state.history)) runtime.state.history = []
+    runtime.state.history.push(entry)
+    if (runtime.state.history.length > 50) runtime.state.history = runtime.state.history.slice(-50)
+    console.log('[auto-scan]', runtime.state.lastResult)
   } catch (error) {
-    state.errors++
-    state.lastResult = `error: ${(error as Error).message}`
-    if (!Array.isArray(state.history)) state.history = []
-    state.history.push({ at: new Date().toISOString(), result: state.lastResult })
-    if (state.history.length > 50) state.history = state.history.slice(-50)
+    runtime.state.errors++
+    runtime.state.lastResult = `error: ${(error as Error).message}`
+    if (!Array.isArray(runtime.state.history)) runtime.state.history = []
+    runtime.state.history.push({ at: new Date().toISOString(), result: runtime.state.lastResult })
+    if (runtime.state.history.length > 50) runtime.state.history = runtime.state.history.slice(-50)
     console.warn('[auto-scan] failed:', (error as Error).message)
   } finally {
     persist()
-    running = false
+    try {
+      await refreshConfiguredInterval()
+    } finally {
+      runtime.running = false
+    }
   }
 }
 
 function startTimer() {
-  if (timer) return
-  timer = setInterval(() => {
+  if (runtime.timer) return
+  runtime.timer = setInterval(() => {
     void runOnce()
-  }, INTERVAL_MS)
+  }, runtime.intervalMs)
 }
 
 function stopTimer() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
+  if (runtime.timer) {
+    clearInterval(runtime.timer)
+    runtime.timer = null
   }
 }
 
 export function getAutoScanState(): AutoScanState & { intervalMinutes: number } {
-  return { ...state, history: [...(state.history ?? [])].reverse(), intervalMinutes: INTERVAL_MS / 60_000 }
+  return { ...runtime.state, history: [...(runtime.state.history ?? [])].reverse(), intervalMinutes: runtime.intervalMs / 60_000 }
+}
+
+export function setAutoScanInterval(value: unknown): AutoScanState & { intervalMinutes: number } {
+  const next = normalizeAutoScanIntervalMs(value)
+  if (next === runtime.intervalMs) return getAutoScanState()
+  runtime.intervalMs = next
+  if (runtime.state.enabled) {
+    stopTimer()
+    startTimer()
+  }
+  return getAutoScanState()
 }
 
 export function setAutoScanEnabled(enabled: boolean): AutoScanState & { intervalMinutes: number } {
-  state.enabled = enabled
+  runtime.state.enabled = enabled
   if (enabled) {
     startTimer()
     void runOnce() // immediate first cycle on enable
@@ -159,9 +229,16 @@ export function setAutoScanEnabled(enabled: boolean): AutoScanState & { interval
 }
 
 // Restore a previously-enabled schedule after a server restart.
-export function initAutoScan() {
+export async function initAutoScan(configLoader?: IntervalConfigLoader): Promise<void> {
   if (process.env.NEXT_PHASE === 'phase-production-build' || process.env.npm_lifecycle_event === 'build') return
-  if (state.enabled && !timer) {
+  if (runtime.initializationStarted) return
+  runtime.initializationStarted = true
+  runtime.intervalConfigLoader = configLoader ?? null
+  if (runtime.intervalConfigLoader) {
+    await refreshConfiguredInterval()
+    startConfigRefreshTimer()
+  }
+  if (runtime.state.enabled && !runtime.timer) {
     startTimer()
     setTimeout(() => void runOnce(), 2_000)
   }

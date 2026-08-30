@@ -1,8 +1,7 @@
 import type { RawToken, Chain } from './types'
-import { WEB_DEFAULT_CONFIG } from './types'
 import { fetchGeckoTokens } from './gecko'
 
-// --- Adjustable hard filters (majors / wrapped / stables / mcap cap) ---
+// --- Discovery-only exclusions (majors / wrapped / stables / mcap cap) ---
 
 export const MAX_MARKET_CAP_USD = 5_000_000
 
@@ -125,19 +124,9 @@ async function withBackoff<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
   throw lastErr
 }
 
-const MIN_LIQUIDITY = WEB_DEFAULT_CONFIG.minLiquidityUsd
-const MIN_VOLUME_24H = WEB_DEFAULT_CONFIG.minVolume24hUsd
-
-function passesMinimums(token: RawToken): boolean {
-  if (token.liquidity > 0 && token.liquidity < MIN_LIQUIDITY) return false
-  if (token.volume24h > 0 && token.volume24h < MIN_VOLUME_24H) return false
-  return true
-}
-
 function filterFreshTokens(tokens: RawToken[]): RawToken[] {
   return tokens
     .filter((t) => !isMajorOrWrapped(t))
-    .filter(passesMinimums)
     .slice(0, 20)
 }
 
@@ -183,10 +172,11 @@ async function searchPairsForChain(chain: Chain): Promise<RawToken[]> {
 }
 
 // Primary discovery: GeckoTerminal new_pools (real fresh pairs).
-// Fallback ONLY when GT returns nothing: legacy DexScreener search.
+// Fallback when GT returns nothing usable after discovery-only exclusions.
 export async function fetchTokensForChain(chain: Chain): Promise<RawToken[]> {
   const geckoTokens = await cachedGecko(chain)
-  if (geckoTokens.length > 0) return filterFreshTokens(geckoTokens)
+  const filteredGeckoTokens = filterFreshTokens(geckoTokens)
+  if (filteredGeckoTokens.length > 0) return filteredGeckoTokens
   return searchPairsForChain(chain)
 }
 
