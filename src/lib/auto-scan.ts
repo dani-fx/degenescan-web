@@ -57,6 +57,10 @@ export function normalizeAutoScanIntervalMs(value: unknown): number {
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.round(parsed)))
 }
 
+export function isExpectedScanContention(status: number): boolean {
+  return status === 409
+}
+
 async function refreshConfiguredInterval(): Promise<void> {
   if (!runtime.intervalConfigLoader) return
   if (runtime.configRefreshPromise) return runtime.configRefreshPromise
@@ -115,6 +119,13 @@ async function runOnce() {
         autoTrade: true,
       }),
     }, 90_000)
+    if (isExpectedScanContention(resp.status)) {
+      // A manual scan (or another route instance) owns the shared scan lock.
+      // This is expected contention, not an autoscan failure; preserve the
+      // last successful result and let the next scheduled cycle try again.
+      console.info('[auto-scan] skipped: scan already in progress')
+      return
+    }
     if (!resp.ok) throw new Error(`scan HTTP ${resp.status}`)
     const body = await resp.json()
 

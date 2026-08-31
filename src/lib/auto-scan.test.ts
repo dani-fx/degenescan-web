@@ -6,7 +6,7 @@ vi.mock('./storage', () => ({
   fetchWithTimeout: vi.fn(),
 }))
 
-import { getAutoScanState, initAutoScan, normalizeAutoScanIntervalMs, setAutoScanInterval } from './auto-scan'
+import { getAutoScanState, initAutoScan, isExpectedScanContention, normalizeAutoScanIntervalMs, setAutoScanInterval } from './auto-scan'
 
 describe('autoscan interval', () => {
   it('uses an injected persisted interval and clamps unsafe values', async () => {
@@ -14,6 +14,8 @@ describe('autoscan interval', () => {
     expect(normalizeAutoScanIntervalMs(120_000)).toBe(120_000)
     expect(normalizeAutoScanIntervalMs(1)).toBe(30_000)
     expect(normalizeAutoScanIntervalMs(Number.POSITIVE_INFINITY)).toBe(300_000)
+    expect(isExpectedScanContention(409)).toBe(true)
+    expect(isExpectedScanContention(429)).toBe(false)
 
     let persistedInterval = 120_000
     const configLoader = vi.fn(async () => ({ pollIntervalMs: persistedInterval }))
