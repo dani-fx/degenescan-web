@@ -140,7 +140,7 @@ export const WEB_DEFAULT_CONFIG = DEFAULT_CONFIG
  *  a simulated trade is automatically opened (no real funds). Stored in
  *  data/trades.sqlite so it survives refreshes and restarts.
  */
-export const AUTO_TRADE_MIN_SCORE = 85
+export const AUTO_TRADE_MIN_SCORE = 70
 
 export interface TradeEntry {
   id: number

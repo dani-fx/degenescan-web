@@ -225,7 +225,7 @@ export default function TradesPanel() {
 
         {openTrades.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
-            No open trades yet. Safe HIGH signals scoring 85+ can be
+            No open trades yet. Safe HIGH signals scoring 70+ can be
             automatically entered.
           </div>
         ) : (
@@ -259,7 +259,7 @@ export default function TradesPanel() {
 
       {/* Help text */}
       <div className="pt-2 border-t border-border/50 text-[10px] text-muted-foreground leading-relaxed">
-        Trades are simulated — no real funds. Only RugCheck-verified HIGH signals scoring ≥85 auto-open.
+        Trades are simulated — no real funds. Only RugCheck-verified HIGH signals scoring ≥70 auto-open.
         Prices refresh from DexScreener every scan cycle.
       </div>
     </div>
