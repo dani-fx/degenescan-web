@@ -25,9 +25,9 @@ export interface SmartWalletTradeRow {
   walletAddress: string
   tokenAddress: string
   tokenSymbol: string
-  tradedAt: number
+  tradedAt: string
   volumeUsd: number
-  alertedAt: number | null
+  alertedAt: string | null
 }
 
 export interface SmartWalletSnapshot {
@@ -55,10 +55,6 @@ function number(value: unknown): number {
 
 function nullableText(value: unknown): string | null {
   return value == null ? null : text(value)
-}
-
-function nullableNumber(value: unknown): number | null {
-  return value == null ? null : number(value)
 }
 
 export function normalizeSmartWalletSnapshot(input: unknown): SmartWalletSnapshot {
@@ -102,9 +98,9 @@ export function normalizeSmartWalletSnapshot(input: unknown): SmartWalletSnapsho
         walletAddress: text(row.walletAddress),
         tokenAddress: text(row.tokenAddress),
         tokenSymbol: text(row.tokenSymbol),
-        tradedAt: number(row.tradedAt),
+        tradedAt: text(row.tradedAt),
         volumeUsd: number(row.volumeUsd),
-        alertedAt: nullableNumber(row.alertedAt),
+        alertedAt: nullableText(row.alertedAt),
       }
     }),
   }

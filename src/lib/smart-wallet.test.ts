@@ -21,7 +21,7 @@ const trade = (index: number) => ({
   walletAddress: `wallet-${index}`,
   tokenAddress: `token-${index}`,
   tokenSymbol: `RUN${index}`,
-  tradedAt: 1000 + index,
+  tradedAt: new Date((1000 + index) * 1000).toISOString(),
   volumeUsd: 250,
   alertedAt: null,
 })

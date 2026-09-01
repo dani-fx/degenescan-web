@@ -128,7 +128,7 @@ export default function SmartWalletPanel({ pollIntervalMs }: { pollIntervalMs: n
                 {trades.map((trade) => (
                   <a key={`${trade.chain}:${trade.tokenAddress}:${trade.walletAddress}:${trade.tradedAt}`} href={chartUrl(trade)} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/35 p-3 hover:border-primary/30 transition-colors">
                     <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-bold text-sm">{trade.tokenSymbol}</span><span className="text-[9px] uppercase text-muted-foreground">{trade.chain}</span></div><p className="font-mono text-[10px] text-muted-foreground">{short(trade.walletAddress)}</p></div>
-                    <div className="text-right"><div className="text-xs font-semibold">{money(trade.volumeUsd)}</div><div className="text-[9px] text-muted-foreground">{new Date(trade.tradedAt * 1000).toLocaleTimeString()}</div></div>
+                    <div className="text-right"><div className="text-xs font-semibold">{money(trade.volumeUsd)}</div><div className="text-[9px] text-muted-foreground">{new Date(trade.tradedAt).toLocaleTimeString()}</div></div>
                   </a>
                 ))}
               </div>
