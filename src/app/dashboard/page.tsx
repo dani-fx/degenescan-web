@@ -31,6 +31,7 @@ import TrackedRow from "@/components/tracked-row";
 import ScanPanel from "@/components/scan-panel";
 import TradesPanel from "@/components/trades-panel";
 import LegendObservatoryPanel from "@/components/legend-observatory-panel";
+import SmartWalletPanel from "@/components/smart-wallet-panel";
 import Link from "next/link";
 
 function mapScoredToken(item: SignalItem, index: number): SignalItem {
@@ -464,6 +465,8 @@ export default function DashboardPage() {
             </AnimatePresence>
 
             <LegendObservatoryPanel pollIntervalMs={pollIntervalMs} />
+
+            <SmartWalletPanel pollIntervalMs={pollIntervalMs} />
 
             {/* Signals */}
             <section>
