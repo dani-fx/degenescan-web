@@ -35,7 +35,8 @@ export function scoreAndClassifyToken(raw: RawToken, config: BotConfig): Evaluat
 
 export async function applyRugcheck(token: ScoredToken): Promise<{ token: ScoredToken; hardDrop: boolean; reason: string }> {
   const check = await rugcheckToken(token.address, token.chain)
-  token.rugcheck = { checked: check.checked, safe: check.checked && !check.isRug && check.riskLevel === 'safe' }
+  const acceptedRisk = check.riskLevel === 'safe' || check.riskLevel === 'moderate'
+  token.rugcheck = { checked: check.checked, safe: check.checked && !check.isRug && !check.rugged && acceptedRisk }
   return {
     token,
     hardDrop: check.checked && (check.isRug || check.rugged),
