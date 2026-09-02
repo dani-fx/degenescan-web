@@ -59,7 +59,7 @@ function isScoredToken(value: unknown): value is ScoredToken {
   return typeof token.address === 'string' && token.address.length > 0
     && typeof token.symbol === 'string'
     && typeof token.name === 'string'
-    && token.chain === 'solana'
+    && ['solana', 'base', 'ethereum', 'bsc', 'arbitrum'].includes(String(token.chain))
     && finiteNumber(token.priceUsd, Number.MIN_VALUE)
     && finiteNumber(token.priceChange24h)
     && finiteNumber(token.volume24h, 0)

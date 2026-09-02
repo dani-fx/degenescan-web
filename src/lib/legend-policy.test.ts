@@ -20,7 +20,8 @@ function token(overrides: Partial<ScoredToken> = {}): ScoredToken {
 
 describe('legend policy', () => {
   it('explains each failed new-admission gate without changing eligibility', () => {
-    expect(legendAdmissionRejection(token({ chain: 'base' }))).toBe('non_solana')
+    expect(legendAdmissionRejection(token({ chain: 'base', address: '0xAbC' }))).toBeNull()
+    expect(legendAdmissionRejection(token({ chain: 'ethereum', address: '0xDef' }))).toBeNull()
     expect(legendAdmissionRejection(token({ rugcheck: { checked: false, safe: false } }))).toBe('rugcheck_unchecked')
     expect(legendAdmissionRejection(token({ rugcheck: { checked: true, safe: false } }))).toBe('rugcheck_unsafe')
     expect(legendAdmissionRejection(token({ priceUsd: 0 }))).toBe('invalid_price')
@@ -29,10 +30,10 @@ describe('legend policy', () => {
     expect(legendAdmissionRejection(token())).toBeNull()
   })
 
-  it('rejects unchecked, unsafe, and non-Solana tokens', () => {
+  it('rejects unchecked and unsafe tokens while accepting supported EVM chains', () => {
     expect(observeLegend(null, token({ rugcheck: { checked: false, safe: false } }), NOW)).toBeNull()
     expect(observeLegend(null, token({ rugcheck: { checked: true, safe: false } }), NOW)).toBeNull()
-    expect(observeLegend(null, token({ chain: 'base' }), NOW)).toBeNull()
+    expect(observeLegend(null, token({ chain: 'base', address: '0xAbC' }), NOW)?.key).toBe('base:0xabc')
   })
 
   it('rejects non-finite admission values before persistence', () => {

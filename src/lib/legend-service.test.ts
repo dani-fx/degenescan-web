@@ -62,17 +62,17 @@ describe('legend service', () => {
     expect(state.records[0]?.snapshots).toHaveLength(2)
   })
 
-  it('does not admit EVM or unchecked discoveries', async () => {
+  it('admits verified EVM discoveries and rejects unchecked discoveries', async () => {
     const result = await refreshLegendObservatory([
-      token({ chain: 'base' }),
+      token({ chain: 'base', address: '0xAbC' }),
       token({ address: 'MintUnchecked', rugcheck: { checked: false, safe: false } }),
     ], config, NOW)
-    expect(result.records).toEqual([])
+    expect(result.records.map((record) => record.key)).toEqual(['base:0xabc'])
     expect(result.admissionDiagnostics).toEqual({
       evaluated: 2,
-      eligible: 0,
-      rejected: 2,
-      reasons: { non_solana: 1, rugcheck_unchecked: 1 },
+      eligible: 1,
+      rejected: 1,
+      reasons: { rugcheck_unchecked: 1 },
     })
   })
 

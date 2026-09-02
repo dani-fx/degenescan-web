@@ -4,7 +4,6 @@ import type { ScoredToken } from './types'
 export type LegendStage = 'WATCH' | 'EARLY_ALERT' | 'BREAKOUT_CANDIDATE' | 'PERSISTENT_LEADER'
 export type LegendEntryQuality = 'EARLY' | 'EXTENDED' | 'OVERHEATED'
 export type LegendAdmissionRejection =
-  | 'non_solana'
   | 'rugcheck_unchecked'
   | 'rugcheck_unsafe'
   | 'invalid_price'
@@ -79,8 +78,7 @@ function pctChange(current: number, previous: number): number {
 }
 
 function isSafeObservation(token: ScoredToken): boolean {
-  return token.chain === 'solana'
-    && token.rugcheck?.checked === true
+  return token.rugcheck?.checked === true
     && token.rugcheck.safe === true
     && Number.isFinite(token.priceUsd)
     && token.priceUsd > 0
@@ -89,7 +87,6 @@ function isSafeObservation(token: ScoredToken): boolean {
 }
 
 export function legendAdmissionRejection(token: ScoredToken): LegendAdmissionRejection | null {
-  if (token.chain !== 'solana') return 'non_solana'
   if (token.rugcheck?.checked !== true) return 'rugcheck_unchecked'
   if (token.rugcheck.safe !== true) return 'rugcheck_unsafe'
   if (!Number.isFinite(token.priceUsd) || token.priceUsd <= 0) return 'invalid_price'
@@ -126,8 +123,9 @@ function scoreObservation(token: ScoredToken, snapshots: LegendSnapshot[], first
   const maxPrice = Math.max(...snapshots.map((item) => item.priceUsd))
   const drawdownFromHigh = maxPrice > 0 ? ((latest.priceUsd - maxPrice) / maxPrice) * 100 : 0
 
-  let score = 20 // Passed the strict Solana + RugCheck safety admission gate.
-  const drivers: string[] = ['RugCheck-verified Solana safety']
+  const safetyProvider = token.chain === 'solana' ? 'RugCheck' : 'TokIn'
+  let score = 20 // Passed the chain-appropriate verified safety admission gate.
+  const drivers: string[] = [`${safetyProvider}-verified ${token.chain} safety`]
   const risks: string[] = ['Wallet-distribution analysis pending']
 
   if (token.score >= 75) score += 5

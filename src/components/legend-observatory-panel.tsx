@@ -82,7 +82,7 @@ export default function LegendObservatoryPanel({ pollIntervalMs }: { pollInterva
               </div>
               <div>
                 <h2 className="font-bold tracking-tight">Legend Observatory</h2>
-                <p className="text-xs text-muted-foreground">Organic breakout persistence · Solana shadow mode</p>
+                <p className="text-xs text-muted-foreground">Organic breakout persistence · Multichain shadow mode</p>
               </div>
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function LegendObservatoryPanel({ pollIntervalMs }: { pollInterva
       ) : visible.length === 0 ? (
         <div className="p-8 text-center space-y-2">
           <Radar size={24} className="mx-auto text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No safe Solana contenders yet.</p>
+          <p className="text-sm text-muted-foreground">No verified multichain contenders yet.</p>
           <p className="text-xs text-muted-foreground/70">Autoscan will retain promising tokens for up to 72 hours.</p>
         </div>
       ) : (

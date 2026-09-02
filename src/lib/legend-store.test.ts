@@ -45,6 +45,18 @@ describe('legend store', () => {
     expect((await reloaded.getLegendRecords())[0]?.firstSeenPriceUsd).toBe(1)
   })
 
+  it('persists verified EVM observatory records', async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'degenescan-legends-'))
+    process.env.DATA_DIR = tempDir
+    vi.resetModules()
+    const store = await import('./legend-store')
+    const record = observeLegend(null, { ...token(), chain: 'base', address: '0xAbC' })!
+
+    await store.replaceLegendRecords([record])
+
+    expect((await store.getLegendRecords())[0]?.key).toBe('base:0xabc')
+  })
+
   it('fails closed without overwriting corrupt observatory data', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'degenescan-legends-'))
     process.env.DATA_DIR = tempDir
