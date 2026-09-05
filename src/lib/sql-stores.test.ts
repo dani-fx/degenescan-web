@@ -19,6 +19,20 @@ afterEach(() => {
 })
 
 describe('sql.js trade lifecycle', () => {
+  it.each([{ price: 1.5, pnl: 50 }, { price: 0.01, pnl: -99 }, { price: 1, pnl: 0 }])('persists a manual close with final PnL $pnl%', async ({ price, pnl }) => {
+    let store = await import('./trade-store')
+    await store.openTrade('manual', 'MANUAL', 'base', '0x1', 1, 80, 'A')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ pairs: [
+      { chainId: 'base', baseToken: { address: '0x1' }, priceUsd: String(price) },
+    ] }))))
+    await expect(store.closeTrade('manual', true)).resolves.toBe(true)
+    vi.resetModules()
+    store = await import('./trade-store')
+    const trades = await store.getAllTrades()
+    expect(trades[0]).toMatchObject({ status: 'closed', current_price_usd: price, pnl_pct: pnl })
+    expect(trades[0].checkpoints).toContainEqual(expect.objectContaining({ label: 'manual_close', price_usd: price, pnl_pct: pnl }))
+    expect(store.computeTradeStats(trades)).toMatchObject({ openTrades: 0, closedTrades: 1, totalPnlPct: pnl })
+  })
   it('rejects non-finite entry prices and falls back from invalid discovery prices', async () => {
     const store = await import('./trade-store')
     await expect(store.openTrade('invalid', 'BAD', 'base', '0x1', Infinity, 80, 'A')).resolves.toBeNull()

@@ -10,7 +10,7 @@ import {
   Clock,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useScannerStore, type TradeEntry } from "@/lib/store";
 
 function fmtUsd(v: number): string {
@@ -48,7 +48,13 @@ function PnLIndicator({ pnl }: { pnl: number }) {
   return <span className="text-muted-foreground text-sm">{fmtPct(0)}</span>;
 }
 
-function TradeRow({ trade, onClose }: { trade: TradeEntry; onClose: () => void }) {
+function TradeRow({ trade, onClose, closing = false, disabled = false }: {
+  trade: TradeEntry;
+  onClose: () => void;
+  closing?: boolean;
+  disabled?: boolean;
+}) {
+  const closeLabel = trade.pnl_pct > 0 ? "Take profit" : trade.pnl_pct < 0 ? "Close at loss" : "Close trade";
   const confirmationMove = trade.discovery_price_usd > 0
     ? ((trade.entry_price_usd - trade.discovery_price_usd) / trade.discovery_price_usd) * 100
     : 0;
@@ -58,9 +64,9 @@ function TradeRow({ trade, onClose }: { trade: TradeEntry; onClose: () => void }
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/50 last:border-b-0 hover:bg-muted/30 transition-colors rounded-lg mb-1"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b border-border/50 last:border-b-0 hover:bg-muted/30 transition-colors rounded-lg mb-1"
     >
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex flex-wrap items-center gap-3 min-w-0">
         <div className="flex items-center gap-1.5 shrink-0">
           {trade.status === "open" ? (
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -81,38 +87,37 @@ function TradeRow({ trade, onClose }: { trade: TradeEntry; onClose: () => void }
           score {trade.entry_score}
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right">
+      <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 min-w-0">
+        <div className="min-w-0 sm:text-right">
           <div className="text-xs text-muted-foreground">
             {promoted
               ? `Seen ${fmtUsd(trade.discovery_price_usd)} → Entry ${fmtUsd(trade.entry_price_usd)} (${fmtPct(confirmationMove)})`
               : `Entry ${fmtUsd(trade.entry_price_usd)}`}
           </div>
           <div className="text-sm font-semibold text-foreground">
-            Now {fmtUsd(trade.current_price_usd)}
+            {trade.status === "open" ? "Now" : "Exit"} {fmtUsd(trade.current_price_usd)}
           </div>
         </div>
         <div className="w-px h-6 bg-border/50" />
         <div>
           <PnLIndicator pnl={trade.pnl_pct} />
         </div>
-        <button
+        {trade.status === "open" ? <button
+          type="button"
           onClick={onClose}
-          disabled={trade.status !== "open"}
-          className={`p-1.5 rounded-lg transition-colors ${
-            trade.status === "open"
-              ? "text-tier-c hover:text-tier-c hover:bg-tier-c/10"
-              : "text-muted-foreground/30 cursor-not-allowed"
+          disabled={disabled || closing}
+          aria-busy={closing}
+          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50 disabled:cursor-not-allowed ${
+            trade.pnl_pct > 0
+              ? "border-tier-a/30 text-tier-a bg-tier-a/10 hover:bg-tier-a/20"
+              : "border-tier-c/30 text-tier-c bg-tier-c/10 hover:bg-tier-c/20"
           }`}
-          aria-label="Close trade"
-          title={trade.status === "open" ? "Close trade" : "Already closed"}
+          aria-label={`${closing ? "Closing" : closeLabel} ${trade.symbol}`}
+          title="Close this simulated trade using a refreshed quote, or the last recorded price if unavailable"
         >
-          {trade.status === "open" ? (
-            <XCircle size={14} />
-          ) : (
-            <CheckCircle size={14} />
-          )}
-        </button>
+          {closing ? <Loader2 size={14} className="animate-spin" /> : trade.pnl_pct > 0 ? <CheckCircle size={14} /> : <XCircle size={14} />}
+          {closing ? "Closing…" : closeLabel}
+        </button> : <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><CheckCircle size={14} /> Closed</span>}
       </div>
     </motion.div>
   );
@@ -129,17 +134,48 @@ export default function TradesPanel() {
   } = useScannerStore();
   const [refreshing, setRefreshing] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
+  const [closingId, setClosingId] = useState<number | null>(null);
+  const mutationPending = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const openTrades = trades.filter((t) => t.status === "open");
-  const closedTrades = trades.filter((t) => t.status === "closed");
+  const closedTrades = trades.filter((t) => t.status === "closed").sort((a, b) => {
+    const closedAt = (trade: TradeEntry) => trade.checkpoints.find((point) => point.label === "manual_close")?.at ?? trade.entry_at;
+    return Date.parse(closedAt(b)) - Date.parse(closedAt(a));
+  });
 
   const handleRefresh = async () => {
+    if (mutationPending.current) return;
+    mutationPending.current = true;
+    setError(null);
     setRefreshing(true);
     try {
       await refreshTradePrices();
       await fetchTrades();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not refresh trade prices. Please retry.");
     } finally {
+      mutationPending.current = false;
       setRefreshing(false);
+    }
+  };
+
+  const handleClose = async (trade: TradeEntry) => {
+    if (mutationPending.current) return;
+    mutationPending.current = true;
+    setClosingId(trade.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await closeTrade(trade.signal_id);
+      setShowClosed(true);
+      setNotice(`${trade.symbol} closed. Final profit or loss is recorded below.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `Could not close ${trade.symbol}. Please retry.`);
+    } finally {
+      mutationPending.current = false;
+      setClosingId(null);
     }
   };
 
@@ -155,7 +191,7 @@ export default function TradesPanel() {
         </div>
         <button
           onClick={handleRefresh}
-          disabled={refreshing}
+          disabled={refreshing || closingId !== null}
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
           aria-label="Refresh trade prices"
         >
@@ -166,6 +202,9 @@ export default function TradesPanel() {
           )}
         </button>
       </div>
+
+      {error && <p role="alert" className="rounded-lg border border-tier-c/30 bg-tier-c/10 p-3 text-xs text-tier-c">{error}</p>}
+      {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
 
       {/* Stats */}
       {tradeStats && (
@@ -231,7 +270,7 @@ export default function TradesPanel() {
         ) : (
           <AnimatePresence>
             {openTrades.map((t) => (
-              <TradeRow key={t.id} trade={t} onClose={() => closeTrade(t.signal_id)} />
+              <TradeRow key={t.id} trade={t} onClose={() => void handleClose(t)} closing={closingId === t.id} disabled={refreshing || closingId !== null} />
             ))}
           </AnimatePresence>
         )}
@@ -244,7 +283,7 @@ export default function TradesPanel() {
             Recently Closed
           </div>
           <AnimatePresence>
-            {closedTrades.slice(-5).reverse().map((t) => (
+            {closedTrades.slice(0, 5).map((t) => (
               <TradeRow key={t.id} trade={t} onClose={() => {}} />
             ))}
           </AnimatePresence>
@@ -259,8 +298,8 @@ export default function TradesPanel() {
 
       {/* Help text */}
       <div className="pt-2 border-t border-border/50 text-[10px] text-muted-foreground leading-relaxed">
-        Trades are simulated — no real funds. Only RugCheck-verified HIGH signals scoring ≥70 auto-open.
-        Prices refresh from DexScreener every scan cycle.
+        Trades are simulated — no real funds. Close any open trade to record its profit or loss.
+        Closing refreshes the quote; if unavailable, the last recorded price is used. Final PnL may differ from the current estimate.
       </div>
     </div>
   );
