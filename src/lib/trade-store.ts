@@ -105,7 +105,7 @@ export async function openTrade(
   discoveryPriceUsd?: number,
   discoveryAt?: string,
 ): Promise<TradeEntry | null> {
-  if (!(entryPriceUsd > 0) || !Number.isFinite(entryScore)) return null
+  if (!(entryPriceUsd > 0) || !Number.isFinite(entryPriceUsd) || !Number.isFinite(entryScore)) return null
   return mutate(async () => {
     const db = await getDb()
     const identity = canonicalIdentity(chain, address)
@@ -128,7 +128,7 @@ export async function openTrade(
         db.run('ROLLBACK')
         return null
       }
-      const firstPrice = discoveryPriceUsd && discoveryPriceUsd > 0 ? discoveryPriceUsd : entryPriceUsd
+      const firstPrice = discoveryPriceUsd && discoveryPriceUsd > 0 && Number.isFinite(discoveryPriceUsd) ? discoveryPriceUsd : entryPriceUsd
       const firstSeenAt = discoveryAt && Number.isFinite(Date.parse(discoveryAt)) ? discoveryAt : now
       db.run(`INSERT INTO trades
         (signal_id, symbol, chain, address, entry_price_usd, entry_score, entry_tier, entry_at, current_price_usd, pnl_pct, status, note, discovery_price_usd, discovery_at)
@@ -195,7 +195,7 @@ async function currentPrice(address: string, chain: string): Promise<number | nu
     } catch { return false }
   })
   const price = Number(pair?.priceUsd)
-  return price > 0 ? price : null
+  return price > 0 && Number.isFinite(price) ? price : null
 }
 
 export async function refreshAllTradePrices(): Promise<{ refreshed: number; failed: number }> {

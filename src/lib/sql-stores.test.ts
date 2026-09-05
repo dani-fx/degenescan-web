@@ -13,11 +13,31 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   delete process.env.DATA_DIR
   fs.rmSync(dataDir, { recursive: true, force: true })
 })
 
 describe('sql.js trade lifecycle', () => {
+  it('rejects non-finite entry prices and falls back from invalid discovery prices', async () => {
+    const store = await import('./trade-store')
+    await expect(store.openTrade('invalid', 'BAD', 'base', '0x1', Infinity, 80, 'A')).resolves.toBeNull()
+    const trade = await store.openTrade('valid', 'OK', 'base', '0x2', 1, 80, 'A', Infinity)
+    expect(trade?.discovery_price_usd).toBe(1)
+  })
+
+  it('ignores non-finite provider quotes without corrupting the trade or checkpoints', async () => {
+    const store = await import('./trade-store')
+    await store.openTrade('quote', 'QUOTE', 'base', '0x1', 1, 80, 'A')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ pairs: [
+      { chainId: 'base', baseToken: { address: '0x1' }, priceUsd: 'Infinity' },
+    ] }))))
+    await expect(store.refreshAllTradePrices()).resolves.toEqual({ refreshed: 0, failed: 1 })
+    expect((await store.getAllTrades())[0]).toMatchObject({ current_price_usd: 1, pnl_pct: 0 })
+    await expect(store.closeTrade('quote', true)).resolves.toBe(true)
+    expect((await store.getAllTrades())[0]).toMatchObject({ current_price_usd: 1, pnl_pct: 0, status: 'closed' })
+  })
+
   it('prevents duplicate opens, permits a retrade after close, and caps open positions at three', async () => {
     const store = await import('./trade-store')
 

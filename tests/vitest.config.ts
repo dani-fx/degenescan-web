@@ -10,5 +10,7 @@ module.exports = defineConfig({
   },
   test: {
     environment: 'node',
+    // The experimental package uses node:test and runs its own suite.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 })

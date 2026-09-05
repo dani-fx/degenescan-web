@@ -9,8 +9,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const denied = requireMutationAccess(request); if (denied) return denied
   const limited = rateLimit(request, 10, 60_000); if (limited) return limited
-  const body = (await request.json().catch(() => ({}))) as { enabled?: boolean }
-  if (typeof body.enabled !== 'boolean') {
+  const body: unknown = await request.json().catch(() => null)
+  if (!body || typeof body !== 'object' || !('enabled' in body) || typeof body.enabled !== 'boolean') {
     return NextResponse.json({ error: 'body must be { enabled: boolean }' }, { status: 400 })
   }
   return NextResponse.json(setAutoScanEnabled(body.enabled))
