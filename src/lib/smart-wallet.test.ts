@@ -42,6 +42,18 @@ describe('normalizeSmartWalletSnapshot', () => {
     expect(snapshot.wallets[0].reasons).toEqual(['3/4 runner hits'])
   })
 
+  it('preserves missing performance, caps candidates, and rejects invalid candidate data', () => {
+    const base = { enabled: true, updatedAt: '2026-09-05T00:00:00Z', status: { analyzedTokens: 6, candidates: 225, qualified: 0, pendingAlerts: 0 }, wallets: [], recentTrades: [] }
+    const candidate = { chain: 'solana', walletAddress: 'test', score: 20, samples: 1, runnerHits: 0, winRate: null, realizedPnlUsd: null, performanceFetchedAt: null, blockers: ['Samples 1/3', 'PnL / win rate not fetched'] }
+    const result = normalizeSmartWalletSnapshot({ ...base, candidates: Array(25).fill(candidate) })
+    expect(result.candidates).toHaveLength(20)
+    expect(result.candidates![0].realizedPnlUsd).toBeNull()
+    expect(result.candidates![0].blockers).toEqual(candidate.blockers)
+    expect(normalizeSmartWalletSnapshot(base).candidates).toBeUndefined()
+    expect(() => normalizeSmartWalletSnapshot({ ...base, candidates: 'bad' })).toThrow('malformed')
+    expect(() => normalizeSmartWalletSnapshot({ ...base, candidates: [{ ...candidate, score: Infinity }] })).toThrow('malformed')
+  })
+
   it('rejects malformed upstream data instead of inventing monitor state', () => {
     expect(() => normalizeSmartWalletSnapshot({ enabled: true, status: {}, wallets: 'bad' })).toThrow('malformed')
   })

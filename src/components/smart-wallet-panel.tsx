@@ -55,6 +55,7 @@ export default function SmartWalletPanel({ pollIntervalMs }: { pollIntervalMs: n
   const status = snapshot?.status
   const wallets = snapshot?.wallets.slice(0, 6) ?? []
   const trades = snapshot?.recentTrades.slice(0, 6) ?? []
+  const candidates = snapshot?.candidates?.slice(0, 6) ?? []
 
   return (
     <section className="glass-card rounded-2xl overflow-hidden border border-violet-400/20">
@@ -78,10 +79,10 @@ export default function SmartWalletPanel({ pollIntervalMs }: { pollIntervalMs: n
         </div>
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Metric icon={<Activity size={12} />} label="Analyzed" value={status?.analyzedTokens ?? 0} />
+          <Metric icon={<Activity size={12} />} label="Tokens analyzed" value={status?.analyzedTokens ?? 0} />
           <Metric icon={<WalletCards size={12} />} label="Candidates" value={status?.candidates ?? 0} />
           <Metric icon={<ShieldCheck size={12} />} label="Qualified" value={status?.qualified ?? 0} accent />
-          <Metric icon={<Zap size={12} />} label="Pending" value={status?.pendingAlerts ?? 0} />
+          <Metric icon={<Zap size={12} />} label="Unalerted entries" value={status?.pendingAlerts ?? 0} />
         </div>
       </div>
 
@@ -97,7 +98,7 @@ export default function SmartWalletPanel({ pollIntervalMs }: { pollIntervalMs: n
               <span className="text-[10px] text-muted-foreground">Score ≥ 60</span>
             </div>
             {wallets.length === 0 ? (
-              <Empty icon={<Network size={20} />} title="Learning wallet behavior" detail="No wallet has enough repeat runner history and realized PnL yet. Strict cold starts are expected." />
+              <Empty icon={<Network size={20} />} title="No qualified wallets yet" detail="No candidate currently passes all qualification requirements. See the evidence and blockers below." />
             ) : (
               <div className="space-y-2">
                 {wallets.map((wallet) => (
@@ -114,6 +115,31 @@ export default function SmartWalletPanel({ pollIntervalMs }: { pollIntervalMs: n
                 ))}
               </div>
             )}
+            <div className="mt-5 border-t border-border/40 pt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider">Candidate progress</h3>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">Requires 3 samples · 2 runner hits · 45% win rate · positive realized PnL · score 60. Candidates are not qualified buy signals.</p>
+              <p className="mt-2 text-[10px] text-muted-foreground">{candidates.length ? `Showing ${candidates.length} unqualified candidates, highest score first.` : snapshot?.candidates === undefined ? 'Candidate diagnostics unavailable from the bot.' : 'No unqualified candidates discovered yet.'}</p>
+              <div className="mt-3 space-y-2">
+                {candidates.map(candidate => (
+                  <article key={`${candidate.chain}:${candidate.walletAddress}`} className="rounded-xl border border-amber-400/15 bg-background/35 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <a href={walletUrl(candidate.chain, candidate.walletAddress)} target="_blank" rel="noreferrer" className="font-mono text-xs text-violet-300 hover:underline">{short(candidate.walletAddress)} <span className="font-sans text-[9px] uppercase text-muted-foreground">{candidate.chain}</span></a>
+                      <span className="text-xs font-semibold">Score {candidate.score}/100</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                      <Mini label="Samples" value={`${candidate.samples}/3`} />
+                      <Mini label="Runner hits" value={`${candidate.runnerHits}/2`} />
+                      <Mini label="90d win rate" value={candidate.winRate === null ? 'Not fetched' : `${Math.round(candidate.winRate * 100)}%`} />
+                      <Mini label="Realized PnL" value={candidate.realizedPnlUsd === null ? 'Not fetched' : money(candidate.realizedPnlUsd)} />
+                    </div>
+                    <ul aria-label="Qualification blockers" className="mt-2 space-y-1 text-[11px] leading-relaxed text-amber-300">
+                      {candidate.blockers.map(blocker => <li key={blocker}>• {blocker}</li>)}
+                    </ul>
+                    <p className="mt-2 text-[10px] text-muted-foreground">{candidate.performanceFetchedAt ? `Performance fetched ${new Date(candidate.performanceFetchedAt).toLocaleString()}` : candidate.samples < 2 ? 'Performance lookup starts after 2 token samples.' : 'Awaiting a successful performance lookup.'}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="p-5">

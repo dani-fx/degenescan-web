@@ -30,10 +30,23 @@ export interface SmartWalletTradeRow {
   alertedAt: string | null
 }
 
+export interface SmartWalletCandidate {
+  chain: string
+  walletAddress: string
+  score: number
+  samples: number
+  runnerHits: number
+  winRate: number | null
+  realizedPnlUsd: number | null
+  performanceFetchedAt: string | null
+  blockers: string[]
+}
+
 export interface SmartWalletSnapshot {
   enabled: true
   updatedAt: string
   status: SmartWalletStatus
+  candidates?: SmartWalletCandidate[]
   wallets: SmartWalletRow[]
   recentTrades: SmartWalletTradeRow[]
 }
@@ -64,7 +77,17 @@ export function normalizeSmartWalletSnapshot(input: unknown): SmartWalletSnapsho
     throw new Error('Smart-wallet response was malformed')
   }
 
+  if (root.candidates !== undefined && !Array.isArray(root.candidates)) throw new Error('Smart-wallet response was malformed')
   return {
+    ...(Array.isArray(root.candidates) ? { candidates: root.candidates.slice(0, 20).map(value => {
+      const row = record(value)
+      if (!Array.isArray(row.blockers)) throw new Error('Smart-wallet response was malformed')
+      return { chain: text(row.chain), walletAddress: text(row.walletAddress), score: number(row.score),
+        samples: number(row.samples), runnerHits: number(row.runnerHits),
+        winRate: row.winRate === null ? null : number(row.winRate),
+        realizedPnlUsd: row.realizedPnlUsd === null ? null : number(row.realizedPnlUsd),
+        performanceFetchedAt: nullableText(row.performanceFetchedAt), blockers: row.blockers.map(text) }
+    }) } : {}),
     enabled: true,
     updatedAt: root.updatedAt,
     status: {
